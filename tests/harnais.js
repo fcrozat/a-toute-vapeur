@@ -6,12 +6,14 @@
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 
-// Deux sections se passent l'une à l'autre : le modèle physique, puis les règles
-// du jeu, qui lisent le modèle et rendent ce que l'écran affiche. Aucune des deux
-// ne voit le navigateur — c'est une promesse, pas une convention.
+// Trois sections se passent le ballon : le modèle physique, puis les règles du
+// jeu, qui lisent le modèle et rendent ce que l'écran affiche, puis la projection,
+// seule à savoir qu'un navigateur existe. Les deux premières ne voient ni un pixel
+// ni une touche — c'est une promesse, pas une convention.
 const SECTIONS = {
   modele: { debut: '// ===== MODELE : DEBUT =====', fin: '// ===== MODELE : FIN =====' },
   regles: { debut: '// ===== REGLES : DEBUT =====', fin: '// ===== REGLES : FIN =====' },
+  projection: { debut: '// ===== PROJECTION : DEBUT =====', fin: '// ===== PROJECTION : FIN =====' },
 };
 
 function sourceSection(nom) {
@@ -36,6 +38,13 @@ export function sourceRegles() {
   return sourceSection('regles');
 }
 
+// La projection ne se teste pas à l'image (spec, Testing Decisions) : on la lit
+// comme du texte, pour vérifier qu'elle ne demande à l'état du jeu que ce qu'il
+// rend vraiment.
+export function sourceProjection() {
+  return sourceSection('projection');
+}
+
 // Le modèle est un script simple, sans import : on l'évalue tel quel et on
 // récupère l'objet qu'il déclare. Ce que voient les tests est donc exactement
 // ce que le navigateur exécute.
@@ -47,7 +56,7 @@ export function chargerModele() {
 // Les règles sont écrites à côté du modèle et s'appuient sur lui : on le leur
 // donne comme il le reçoit à l'écran, sous le même nom. Ce que voient les tests
 // est donc exactement ce que le navigateur exécute.
-export function chargerRegles() {
+export function chargerRegles(modele = chargerModele()) {
   const fabrique = new Function('modeleVapeur', `${sourceRegles()}\nreturn reglesDuJeu;`);
-  return fabrique(chargerModele());
+  return fabrique(modele);
 }

@@ -2,10 +2,11 @@
 //
 // Ici on n'ouvre pas le capot : on amène l'engin à un état par la couture
 // physique (pasDeTemps), puis on interroge les règles — `situation`,
-// `etatDuJeu` — telles que la projection les lit. La projection SVG et la
+// `etatDuJeu` — telles que la projection les lit. Le dessin sur le canvas et la
 // boucle d'images ne se testent pas (spec, Testing Decisions) : c'est
-// l'étroitesse d'`etatDuJeu`, plus une promesse qui lit les deux sections comme
-// du texte, qui tiennent lieu de garde.
+// l'étroitesse d'`etatDuJeu`, plus une promesse de complétude qui lit la
+// projection comme du texte pour vérifier qu'elle ne demande à l'état du jeu que
+// ce qu'il rend, qui tiennent lieu de garde.
 //
 // Les règles sont extraites d'index.html par tests/harnais.js, comme le modèle,
 // et reçoivent le modèle comme unique point de départ : elles ne voient ni un
@@ -13,7 +14,7 @@
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { chargerModele, chargerRegles, sourceModele, sourceRegles } from './harnais.js';
+import { chargerModele, chargerRegles, sourceModele, sourceRegles, sourceProjection } from './harnais.js';
 
 const M = chargerModele();
 const R = chargerRegles();
@@ -406,4 +407,431 @@ test("chaque état de l'engin a son mot à l'écran", () => {
     mots.add(etat.mot);
   }
   assert.equal(mots.size, etats.length, "deux états de l'engin portent le même mot à l'écran");
+});
+
+// Les sept états nommés, réunis pour les promesses qui doivent tous les regarder.
+const FABRIQUES = {
+  danger: enginEnDanger,
+  sec: enginASec,
+  cale: enginCalant,
+  patine: enginPatinent,
+  souffle: enginSoufflant,
+  roule: enginRoulant,
+  arret: enginARret,
+};
+
+// Le modèle sous écoute : on compte les pas qu'il reçoit, sans rien lui changer.
+function modeleAuxPasComptes() {
+  const modele = chargerModele();
+  const recus = [];
+  const espion = {
+    ...modele,
+    simuler(engin, monde, options) {
+      recus.push(options.duree);
+      return modele.simuler(engin, monde, options);
+    },
+  };
+  return { recus, regles: chargerRegles(espion) };
+}
+
+// Les noms que l'écran affiche, image après image : à 20 images la seconde, comme
+// la boucle du jeu.
+function situationsVues(engin, monde, { pendant }) {
+  const vues = [];
+  let t = 0;
+  while (t < pendant) {
+    M.simuler(engin, monde, PAS_IMAGE);
+    t += PAS_IMAGE;
+    vues.push(R.situation(engin, monde));
+  }
+  return vues;
+}
+
+const PAS_IMAGE = 1 / 20;
+
+// 23
+test('le régulateur dose la vapeur admise sans rien changer à l’avance de l’excentrique', () => {
+  const monde = plaine();
+  const ouverte = demarrer(machineVapeur(), monde);
+  const serree = demarrer(machineVapeur(), monde);
+  serree.commandes.regulateur = R.regulateurDuCurseur(40);
+  rouler(serree, monde, { duree: 40 });
+  rouler(ouverte, monde, { duree: 40 });
+
+  // Ce que le régulateur règle : la vapeur. La chaudière garde sa pression quand
+  // le passage se referme, et la machine pousse moins.
+  assert.ok(
+    R.etatDuJeu(serree, monde).jauge.pression > R.etatDuJeu(ouverte, monde).jauge.pression + 1,
+    'serrer le régulateur ne change rien à la vapeur'
+  );
+  assert.ok(serree.distance < ouverte.distance - 5, 'serrer le régulateur ne ralentit pas la machine');
+
+  // Ce qu'il ne règle pas : la distribution. L'avance sur l'excentrique est celle
+  // du modèle, ouverte ou serrée, et l'excentrique la garde pour lui.
+  assert.equal(ouverte.avanceEffective(), M.AVANCE_NOMINALE);
+  assert.equal(serree.avanceEffective(), M.AVANCE_NOMINALE);
+  assert.equal(serree.machine.avance, ouverte.machine.avance, 'le régulateur a décalé l’excentrique');
+  assert.equal(serree.machine.recouvrement, ouverte.machine.recouvrement, 'le régulateur a changé le recouvrement');
+  assert.equal(
+    R.etatDuJeu(serree, monde).machine.avance,
+    R.etatDuJeu(ouverte, monde).machine.avance,
+    'le dessin voit une avance différente'
+  );
+});
+
+// 23
+test('le curseur du régulateur rend la commande du modèle, et ne se ferme pas d’aplomb', () => {
+  assert.equal(R.regulateurDuCurseur(100), 1, 'curseur au max : la vapeur devrait être grande ouverte');
+  assert.equal(R.regulateurDuCurseur(37), 0.37, 'la position du curseur ne passe pas telle quelle');
+  assert.equal(R.regulateurDuCurseur(140), 1, 'le curseur ouvre plus que tout');
+  assert.equal(R.regulateurDuCurseur(-20), R.REGULATEUR_FERME, 'le curseur ferme plus que le jeu des tringleries');
+  assert.equal(R.regulateurDuCurseur(''), R.REGULATEUR_FERME, 'un curseur qui ne dit rien devrait rendre le fond');
+  assert.ok(R.REGULATEUR_FERME > 0 && R.REGULATEUR_FERME < 0.1, `le fond du régulateur est mal choisi : ${R.REGULATEUR_FERME}`);
+  assert.equal(R.commandeDuCurseur(80), 0.8, 'la barre du feu ne convertit pas comme le régulateur');
+});
+
+// Scène tenue à la main, côté règles : régulateur fermé à chaud.
+test('fermé à chaud, le régulateur prend la machine — et l’écran le dit', () => {
+  const monde = plaine();
+  const engin = demarrer(machineVapeur(), monde);
+  assert.equal(R.situation(engin, monde), 'roule', 'la machine ne roulait pas avant le geste');
+
+  engin.commandes.regulateur = R.regulateurDuCurseur(0);   // le chauffeur ferme à fond
+
+  // La machine a son élan : elle roule encore un moment, se fait prendre, casse
+  // une fois, puis reste prise. On regarde après qu'elle s'est rangée.
+  rouler(engin, monde, { duree: 10 });
+  const vues = situationsVues(engin, monde, { pendant: 20 });
+  const distanceEnPrise = engin.distance;
+  assert.ok(
+    vues.every((s) => s === 'cale'),
+    `la machine fermée à chaud n'est pas tenue prise : ${vues.filter((s) => s !== 'cale').join(', ')}`
+  );
+
+  const etat = R.etatDuJeu(engin, monde);
+  assert.equal(etat.mot, R.MOTS_DE_SITUATION.cale, 'le mot de la machine prise n’est pas celui de l’état');
+  assert.equal(etat.forme, R.FORMES_DE_SITUATION.cale, 'la machine prise ne change pas de forme');
+  assert.equal(etat.jauge.souffle, true, 'la vapeur ne s’en va plus par la soupape');
+  assert.equal(etat.vitesse.kmh, 0, 'la machine prise roule encore à l’écran');
+  assert.ok(
+    etat.comptes.distance - distanceEnPrise < 0.5,
+    `la machine a marché pendant qu'on la tenait : ${(etat.comptes.distance - distanceEnPrise).toFixed(2)} m`
+  );
+});
+
+// Scène tenue à la main, côté règles : feu monté sans soutirage.
+test('feu monté sans soutirage, la soupape siffle à la jauge', () => {
+  const monde = plaine();
+  const engin = machineVapeur({ feu: 1 });   // feu d'enfer, personne ne tire de vapeur
+  let t = 0;
+  let sifflet = null;
+  while (t < 200 && sifflet === null) {
+    M.simuler(engin, monde, PAS_IMAGE);
+    t += PAS_IMAGE;
+    const jauge = R.etatDuJeu(engin, monde).jauge;
+    if (jauge.souffle) sifflet = { ...jauge };
+  }
+  assert.ok(sifflet, 'la soupape n’a jamais soufflé, même après deux cents secondes de feu');
+  assert.ok(sifflet.pression >= sifflet.soupape - 1e-9, 'la soupape siffle avant la zone marquée à la jauge');
+  assert.equal(R.etatDuJeu(engin, monde).jauge.souffle, true, 'l’écran ne dit plus le sifflement');
+});
+
+// 29
+test('la vitesse de temps ajoute des pas par image, jamais un pas plus grand', () => {
+  const { recus, regles } = modeleAuxPasComptes();
+  const monde = plaine();
+  const engin = machineVapeur();
+
+  regles.passerLImage(engin, monde, { duree: PAS_IMAGE, vitesse: 1 });
+  assert.deepEqual(recus, [PAS_IMAGE], '×1 ne donne pas un pas au modèle');
+
+  recus.length = 0;
+  for (let image = 0; image < 5; image += 1) regles.passerLImage(engin, monde, { duree: PAS_IMAGE, vitesse: 4 });
+  assert.deepEqual(recus, new Array(20).fill(PAS_IMAGE), '×4 ne donne pas quatre pas de la même taille');
+  assert.equal(recus.some((d) => d !== PAS_IMAGE), false, '×4 allonge le pas que reçoit le modèle');
+
+  // Un palier que le jeu n'a pas : ×1, et rien d'autre.
+  recus.length = 0;
+  regles.passerLImage(engin, monde, { duree: PAS_IMAGE, vitesse: 3 });
+  assert.equal(recus.length, 1, `le palier 3 fait ${recus.length} pas`);
+  regles.passerLImage(engin, monde, { duree: PAS_IMAGE });
+  assert.equal(recus.length, 2, 'sans palier dit, l’image devrait passer à ×1');
+  assert.deepEqual(R.VITESSES_DU_TEMPS, [1, 2, 4], 'les paliers du temps ne sont pas ×1, ×2, ×4');
+
+  // Quatre images à ×4, seize images à ×1 : même heure de machine, même état.
+  const lente = machineVapeur();
+  const rapide = machineVapeur();
+  for (let image = 0; image < 16; image += 1) regles.passerLImage(lente, monde, { duree: PAS_IMAGE, vitesse: 1 });
+  for (let image = 0; image < 4; image += 1) regles.passerLImage(rapide, monde, { duree: PAS_IMAGE, vitesse: 4 });
+  assert.deepEqual(
+    JSON.parse(JSON.stringify(regles.etatDuJeu(rapide, monde))),
+    JSON.parse(JSON.stringify(regles.etatDuJeu(lente, monde))),
+    '×4 ne rend pas la même machine que ×1 sur la même durée'
+  );
+});
+
+// 29
+test('la vitesse de temps ne déplace pas l’heure où la soupape se met à siffler', () => {
+  function heureDuSifflet(vitesse) {
+    const monde = plaine();
+    const engin = machineVapeur({ feu: 1 });
+    let t = 0;
+    while (t < 200) {
+      R.passerLImage(engin, monde, { duree: PAS_IMAGE, vitesse });
+      t += PAS_IMAGE;
+      if (engin.chaudiere.soupapeSiffle) return engin.tempsEcoule;
+    }
+    return null;
+  }
+  const lente = heureDuSifflet(1);
+  const rapide = heureDuSifflet(4);
+  assert.ok(lente !== null && rapide !== null, 'la soupape n’a pas sifflé pendant la chauffe');
+  // À ×4 on échantillonne une fois par 0,2 s de machine : c'est tout ce que le
+  // palier a le droit de sauter.
+  assert.ok(Math.abs(lente - rapide) < 0.25, `×4 déplace la montée en pression : ${lente} contre ${rapide}`);
+});
+
+// 17
+test('la distance parcourue et les tours faits se comptent entre deux essais', () => {
+  const monde = plaine();
+  const froide = R.etatDuJeu(machineVapeur({ feu: 0 }), monde).comptes;
+  assert.equal(froide.distance, 0, 'une machine froide a déjà parcouru quelque chose');
+  assert.equal(froide.tours, 0, 'une machine froide a déjà fait des tours');
+
+  const engin = demarrer(machineVapeur(), monde);
+  const etat = R.etatDuJeu(engin, monde);
+  assert.equal(etat.comptes.distance, engin.distance, 'la distance affichée n’est pas celle de la machine');
+  assert.equal(etat.comptes.tours, engin.machine.tours, 'les tours affichés ne sont pas ceux de la machine');
+  assert.ok(etat.comptes.distance > 20, `la machine n'a pas assez roulé pour compter (${etat.comptes.distance.toFixed(1)} m)`);
+  assert.ok(etat.comptes.tours > 10, `pas assez de tours (${etat.comptes.tours.toFixed(1)})`);
+  assert.ok(etat.comptes.secondes > 80, 'le temps de l’essai n’est pas compté');
+
+  // Les roues comptent, la distance suit : des tours ne sont pas du chemin, mais
+  // ici les deux montent ensemble.
+  rouler(engin, monde, { duree: 20 });
+  const apres = R.etatDuJeu(engin, monde).comptes;
+  assert.ok(apres.distance > etat.comptes.distance, 'la distance ne monte plus quand la machine roule');
+  assert.ok(apres.tours > etat.comptes.tours, 'les tours ne montent plus quand la machine roule');
+});
+
+// 15
+test('la soute et la citerne disent ce qui reste, en chiffres et en mots', () => {
+  const monde = plaine();
+  const engin = machineVapeur();
+  engin.soute = engin.capacite('soute');
+  engin.citerne = engin.capacite('citerne');
+
+  const pleins = R.etatDuJeu(engin, monde).reservoirs;
+  engin.soute = engin.capacite('soute') * 0.5;   // une soute à demi faite, comme au départ d'une journée
+  assert.equal(pleins.soute.capacite, engin.capacite('soute'), 'la jauge de charbon invente sa capacité');
+  assert.equal(pleins.citerne.capacite, engin.capacite('citerne'), 'la jauge d’eau invente sa capacité');
+  assert.equal(pleins.soute.plein, 1, 'une soute pleine ne se dit pas pleine');
+  assert.equal(pleins.soute.mot, 'pleine');
+
+  rouler(engin, monde, { duree: 60 });
+  const brules = R.etatDuJeu(engin, monde).reservoirs;
+  assert.ok(brules.soute.niveau < pleins.soute.niveau, 'le feu ne brûle rien dans la soute');
+  assert.ok(brules.citerne.niveau < pleins.citerne.niveau, 'la machine ne vaporise rien de la citerne');
+  for (const nom of ['soute', 'citerne']) {
+    const reservoir = brules[nom];
+    assert.ok(reservoir.plein >= 0 && reservoir.plein <= 1, `${nom} sort de sa jauge : ${reservoir.plein}`);
+    assert.ok(reservoir.plein < 1, `${nom} ne descend pas sous les yeux`);
+    assert.equal(typeof reservoir.mot, 'string', `${nom} n'a pas de mot`);
+    assert.equal(/[0-9]/.test(reservoir.mot), false, `le mot de ${nom} récite des chiffres`);
+    assert.ok(reservoir.mot.length <= 16, `le mot de ${nom} déborde de l'écran : ${reservoir.mot}`);
+  }
+  assert.notEqual(brules.soute.mot, pleins.soute.mot, 'la soute brûlée porte le mot de la soute pleine');
+
+  // Une machine sans soute n'a pas de charbon à jauger : l'écran dit vide, et ne
+  // divise pas par zéro au passage.
+  const sansSoute = R.etatDuJeu(M.nouvelEngin(MACHINE.filter((id) => id !== 'soute')), monde).reservoirs.soute;
+  assert.equal(sansSoute.capacite, 0);
+  assert.equal(sansSoute.plein, 0);
+  assert.equal(sansSoute.mot, 'vide');
+
+  // Le mot suit la pente : pleine, à moitié, basse, vide.
+  const words = [];
+  for (const niveau of [300, 150, 90, 20, 0]) {
+    const e = machineVapeur();
+    e.soute = niveau;
+    words.push(R.etatDuJeu(e, monde).reservoirs.soute.mot);
+  }
+  assert.deepEqual(
+    words,
+    ['pleine', 'à moitié', 'basse', 'presque vide', 'vide'],
+    `les mots du niveau ne suivent pas la jauge : ${words.join(', ')}`
+  );
+});
+
+// 18 et 19
+test('le rendement attend le premier charbon brûlé avant de se montrer', () => {
+  const monde = plaine();
+  const froide = R.etatDuJeu(machineVapeur({ feu: 0 }), monde).rendement;
+  assert.equal(froide.valeur, null, 'le rendement s’affiche avant le charbon');
+  assert.equal(froide.chiffres, null, 'le rendement affiche des chiffres avant le charbon');
+  assert.equal(froide.mot, R.RENDEMENT_EN_ATTENTE, 'rien ne dit à l’écran pourquoi le rendement se tait');
+  assert.equal(/NaN|Infinity|infini|null/.test(R.RENDEMENT_EN_ATTENTE), false, 'le mot d’attente imite un chiffre');
+});
+
+// 18
+test('le rendement se dit dès qu’il y a du charbon brûlé, et jamais faux', () => {
+  const monde = plaine();
+
+  // Chaude et immobile : elle a brûlé pour rien. Le modèle dit zéro, l'écran le
+  // montre — ce n'est pas le zéro mensonger du charbon dormant.
+  const immobile = machineVapeur();
+  rouler(immobile, monde, { duree: 30 });
+  const premier = R.etatDuJeu(immobile, monde).rendement;
+  assert.ok(immobile.charbonBrule > 0.01, 'la chaudière n’a rien brûlé pendant la chauffe');
+  assert.equal(premier.valeur, 0, 'brûler sans avancer ne rend pas zéro');
+  assert.equal(typeof premier.chiffres, 'string', 'le rendement ne se dit pas en chiffres');
+  assert.equal(/[0-9]/.test(premier.chiffres), true, 'les chiffres du rendement n’ont pas de nombre');
+
+  // Lancée : le score du jeu, en mètres par kilogramme, rendu par le bilan du modèle.
+  const lancee = demarrer(machineVapeur(), monde);
+  const score = R.etatDuJeu(lancee, monde).rendement;
+  assert.equal(score.valeur, lancee.bilan().rendement, 'le score n’est pas celui du modèle');
+  assert.ok(score.valeur > 0, `la machine lancée ne rapporte rien (${score.valeur})`);
+  assert.equal(/NaN|Infinity|infini/.test(String(score.chiffres)), false, `le rendement affiche un chiffre fou : ${score.chiffres}`);
+  assert.equal(score.chiffres.includes('kg'), true, 'le rendement ne dit pas ce qu’il coûte');
+  assert.equal(score.mot, R.MOT_DU_RENDEMENT);
+});
+
+// 21
+test('chaque état de l’engin a sa forme, et pas une couleur', () => {
+  const noms = Object.keys(FABRIQUES);
+  assert.deepEqual(
+    Object.keys(R.FORMES_DE_SITUATION).sort(),
+    [...noms].sort(),
+    'la table des formes ne couvre pas la table des états'
+  );
+  const formes = new Set();
+  for (const nom of noms) {
+    const forme = R.FORMES_DE_SITUATION[nom];
+    assert.equal(typeof forme, 'string', `aucune forme pour l’état « ${nom} »`);
+    assert.ok(forme.trim().length > 0, `forme vide pour « ${nom} »`);
+    assert.equal(/[0-9]/.test(forme), false, `la forme de « ${nom} » est un numéro : ${forme}`);
+    formes.add(forme);
+    const { engin, monde } = FABRIQUES[nom]();
+    assert.equal(R.etatDuJeu(engin, monde).forme, forme, `l'écran ne reçoit pas la forme de « ${nom} »`);
+  }
+  assert.equal(formes.size, noms.length, 'deux états de l’engin portent la même forme');
+});
+
+test('la table des situations est entière, et le plus grave donne le nom', () => {
+  const attendus = ['danger', 'sec', 'cale', 'patine', 'souffle', 'roule', 'arret'];
+  for (const nom of attendus) {
+    assert.equal(typeof R.MOTS_DE_SITUATION[nom], 'string', `aucun mot pour « ${nom} »`);
+  }
+  assert.equal(Object.keys(R.MOTS_DE_SITUATION).length, attendus.length, 'la table des mots a un état de trop');
+
+  // Deux conditions à la fois : c'est le plus grave qui parle.
+  const monde = plaine();
+
+  // Sans soupape et prise à son point mort : la tôle travaille, c'est elle qui commande.
+  const sansSoupape = M.nouvelEngin(MACHINE.filter((id) => id !== 'soupape'));
+  sansSoupape.soute = 4000;
+  sansSoupape.citerne = 4000;
+  sansSoupape.commandes.feu = 1;
+  sansSoupape.commandes.regulateur = R.regulateurDuCurseur(0);
+  rouler(sansSoupape, monde, { duree: 90 });
+  assert.equal(sansSoupape.machine.cale, true, 'cet engin ne serait pas calé : la superposition est ratée');
+  assert.equal(sansSoupape.chaudiere.danger, true, 'cet engin ne mettrait pas la tôle en danger');
+  assert.equal(R.situation(sansSoupape, monde), 'danger', 'la tôle qui travaille s’efface devant le point mort');
+
+  // À sec et calée : l'eau manque avant le point mort.
+  const aSec = machineVapeur();
+  rouler(aSec, monde, { duree: 60 });
+  aSec.chaudiere.niveauEau = 0;
+  aSec.citerne = 0;
+  rouler(aSec, monde, { duree: 3 });
+  assert.equal(aSec.machine.cale, true, 'cet engin ne serait pas calé : la superposition est ratée');
+  assert.equal(R.situation(aSec, monde), 'sec', 'une chaudière à sec parle après le point mort');
+
+  // Patine et soupape ouverte : la roue qui glisse passe avant le sifflement.
+  const rampe = M.nouveauMonde({ pente: 0.3 });
+  const patineur = machineVapeur({ regulateur: 0.5 });
+  rouler(patineur, rampe, { duree: CHAUFFE });
+  patineur.pousser(4);
+  rouler(patineur, rampe, { duree: 60 });
+  assert.equal(patineur.machine.patine, true, 'cet engin ne patinerait pas : la superposition est ratée');
+  assert.equal(patineur.chaudiere.soupapeSiffle, true, 'cet engin ne sifflerait pas : la superposition est ratée');
+  assert.equal(R.situation(patineur, rampe), 'patine', 'le sifflement efface la roue qui patine');
+
+  // Souffle et roues qui tournent : le sifflement passe avant le simple roulage.
+  const souffleur = enginSoufflant();
+  assert.equal(souffleur.engin.mouvement(), true, 'cet engin ne roulerait pas : la superposition est ratée');
+  assert.equal(souffleur.engin.chaudiere.soupapeSiffle, true, 'cet engin ne sifflerait pas');
+  assert.equal(R.situation(souffleur.engin, souffleur.monde), 'souffle');
+});
+
+test('deux regards sur le même engin disent la même chose', () => {
+  // `situation` est sans mémoire (spec, décision 4) : ni compteur, ni moyenne, ni
+  // souvenir de l'image précédente. Et `etatDuJeu` lit, il ne touche à rien.
+  for (const [nom, fabrique] of Object.entries(FABRIQUES)) {
+    const { engin, monde } = fabrique();
+    const avant = JSON.stringify(engin);
+    const premier = JSON.stringify(R.etatDuJeu(engin, monde));
+    const second = JSON.stringify(R.etatDuJeu(engin, monde));
+    assert.equal(second, premier, `« ${nom} » ne répond pas pareil deux fois de suite`);
+    assert.equal(R.situation(engin, monde), R.situation(engin, monde), `« ${nom} » change d’avis sans raison`);
+    assert.equal(JSON.stringify(engin), avant, `l’état du jeu a retouché l’engin « ${nom} »`);
+  }
+});
+
+// Promesse de complétude du ticket.
+test('pour chaque situation nommée, l’écran ne demande que ce l’état du jeu rend', () => {
+  const source = sourceProjection();
+  assert.ok(source.length > 500, 'la projection est introuvable : le harnais ne sait plus la lire');
+  const chemins = new Set(
+    [...source.matchAll(/\betat((?:\.[A-Za-z_$][\w$]*)+)/g)].map((m) => m[1].slice(1))
+  );
+  assert.ok(chemins.size > 12, `la projection ne semble rien demander à l'état du jeu : ${chemins.size} chemins`);
+
+  for (const [nom, fabrique] of Object.entries(FABRIQUES)) {
+    const { engin, monde } = fabrique();
+    const etat = R.etatDuJeu(engin, monde);
+    for (const chemin of chemins) {
+      let valeur = etat;
+      for (const cle of chemin.split('.')) {
+        assert.notEqual(
+          valeur === undefined || valeur === null ? undefined : valeur[cle],
+          undefined,
+          `« ${nom} » : la projection lit etat.${chemin}, que l'état du jeu ne rend pas`
+        );
+        valeur = valeur[cle];
+      }
+      if (typeof valeur === 'number') {
+        assert.ok(Number.isFinite(valeur), `« ${nom} » : etat.${chemin} vaut ${valeur}, l'écran n'a rien à dessiner`);
+      }
+    }
+
+    // Et ce que l'écran affiche pour elle : un mot, une forme, des niveaux bornés,
+    // un rendement refusé ou fini.
+    assert.ok(etat.mot.trim().length > 0, `« ${nom} » n'a pas de mot`);
+    assert.ok(etat.forme.trim().length > 0, `« ${nom} » n'a pas de forme`);
+    for (const niveau of Object.values(etat.reservoirs)) {
+      assert.ok(niveau.plein >= 0 && niveau.plein <= 1, `« ${nom} » : un réservoir sort de sa jauge`);
+    }
+    assert.ok(
+      etat.rendement.valeur === null || Number.isFinite(etat.rendement.valeur),
+      `« ${nom} » : le rendement s'affiche sans être un nombre mesurable`
+    );
+    assert.ok(
+      (etat.rendement.valeur === null) === (etat.rendement.chiffres === null),
+      `« ${nom} » : le rendement se refuse à moitié`
+    );
+  }
+
+  const mots = new Set(Object.keys(FABRIQUES).map((nom) => R.etatDuJeu(...Object.values(FABRIQUES[nom]()).slice(0, 2)).mot));
+  assert.equal(mots.size, Object.keys(FABRIQUES).length, 'deux situations nommées portent le même mot à l’écran');
+});
+
+test('la mémoire du jeu s’ouvre vide', () => {
+  const memo = R.nouvelleMemo();
+  assert.deepEqual(memo, { refroidissements: {}, deblocages: [], meilleurRendement: null });
+  assert.equal(Object.keys(memo.refroidissements).length, 0, 'la mémoire porte déjà des refroidissements');
+  assert.equal(memo.deblocages.length, 0, 'la mémoire débloque déjà des pièces');
+  assert.equal(memo.meilleurRendement, null, 'la mémoire connaît déjà un score');
+  assert.notEqual(R.nouvelleMemo(), memo, 'deux parties partageraient la même mémoire');
 });

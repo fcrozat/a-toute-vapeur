@@ -24,10 +24,21 @@
     #mot-de-situation { border: 1px solid #55636f; border-radius: 999px; padding: 3px 12px; }
     #pause { color: #f2b53c; }
     .reglage { display: flex; align-items: center; gap: 10px; }
-    /* La barre du feu est une cible de 48 px : le pouce y trouve sa place. */
-    #feu { width: 240px; height: 48px; accent-color: #e2622b; }
+    .etiquette { color: #9aa7b3; text-transform: uppercase; font-size: .78rem; letter-spacing: .08em; }
+    /* Les curseurs sont des cibles de 48 px : le pouce y trouve sa place, et le
+       doigt ne fait pas défiler la page en voulant ouvrir le régulateur. */
+    #feu, #regulateur { width: 240px; height: 48px; touch-action: none; }
+    #feu { accent-color: #e2622b; }
+    #regulateur { accent-color: #6d93a6; }
     #barre { min-height: 48px; min-width: 150px; border-radius: 10px; border: 1px solid #55636f; background: #232a33; color: inherit; font: inherit; }
     #barre:active { background: #e2622b; color: #171b21; }
+    /* Les paliers du temps : trois boutons, trois cibles de 48 px. */
+    #vitesse-temps { margin: 0; display: flex; align-items: center; gap: 8px; }
+    .palier { min-height: 48px; min-width: 62px; border-radius: 10px; border: 1px solid #55636f; background: #232a33; color: inherit; font: inherit; font-variant-numeric: tabular-nums; }
+    .palier[aria-pressed="true"] { background: #efe7d8; color: #171b21; border-color: #efe7d8; }
+    #comptes { display: flex; flex-wrap: wrap; gap: 6px 24px; margin: 0; }
+    .compte { margin: 0; display: flex; align-items: baseline; gap: 8px; }
+    .compte span:last-child { font-variant-numeric: tabular-nums; }
     #aide { margin: 0; color: #9aa7b3; font-size: .85rem; }
     button:focus-visible, input:focus-visible { outline: 3px solid #f2b53c; outline-offset: 2px; }
   </style>
@@ -41,9 +52,25 @@
         <input id="feu" type="range" min="0" max="100" step="1" value="80">
         <output id="feu-dit" for="feu">80 %</output>
       </label>
+      <label class="reglage" for="regulateur">Régulateur
+        <input id="regulateur" type="range" min="0" max="100" step="1" value="100">
+        <output id="regulateur-dit" for="regulateur">100 %</output>
+      </label>
       <button id="barre" type="button">Un coup de barre</button>
+      <p id="vitesse-temps"><span class="etiquette">Vitesse de temps</span>
+        <button class="palier" type="button" data-vitesse="1" aria-pressed="true">×1</button>
+        <button class="palier" type="button" data-vitesse="2" aria-pressed="false">×2</button>
+        <button class="palier" type="button" data-vitesse="4" aria-pressed="false">×4</button>
+      </p>
     </section>
-    <p id="aide">Souris, doigt ou flèches sur la barre du feu · Espace&nbsp;: un coup de barre · P&nbsp;: pause</p>
+    <section id="comptes" aria-label="Comptes de la machine">
+      <p class="compte"><span class="etiquette">Distance</span><span id="distance-dits">0 m</span></p>
+      <p class="compte"><span class="etiquette">Tours faits</span><span id="tours-dits">0 tour</span></p>
+      <p class="compte"><span class="etiquette">Soute</span><span id="soute-dite">100 % — pleine</span></p>
+      <p class="compte"><span class="etiquette">Citerne</span><span id="citerne-dite">100 % — pleine</span></p>
+      <p class="compte"><span class="etiquette">Rendement</span><span id="rendement-dit">—</span></p>
+    </section>
+    <p id="aide">Souris, doigt ou flèches sur les barres de feu et de régulateur · Espace&nbsp;: un coup de barre · 1, 2, 4&nbsp;: la vitesse du temps · P&nbsp;: pause</p>
   </main>
   <script>
 // ===== MODELE : DEBUT =====
@@ -685,6 +712,119 @@ const reglesDuJeu = (() => {
     return v < 0 ? 'arriere' : 'avant';
   }
 
+  // La forme que l'écran donne à chaque nom. Un mot et une forme par état : la
+  // couleur seule ne se lit pas (spec, décision 4), et un état qu'on devine
+  // seulement n'est pas une leçon. Sept noms, sept formes, aucune en commun.
+  const FORMES_DE_SITUATION = {
+    danger: 'eclair',
+    sec: 'goutte_baree',
+    cale: 'croix',
+    patine: 'triangle',
+    souffle: 'losange',
+    roule: 'disque',
+    arret: 'carre',
+  };
+
+  // --- Les commandes que l'écran règle ---
+
+  // Les curseurs vont de 0 à 100 pour qu'un doigt les trouve (spec, décision 16),
+  // les commandes du modèle de 0 à 1. Un seul endroit fait la conversion.
+  function commandeDuCurseur(pourCent) {
+    const n = Number(pourCent);
+    return borne01(Number.isFinite(n) ? n / 100 : 0);
+  }
+
+  // Le fond du régulateur. Fermé d'aplomb — commande à zéro strict —, le modèle ne
+  // soutire plus rien de la chaudière : la conductance tombée à zéro, la vapeur
+  // vive entre au cylindre sans que personne ne la paie, et la machine s'envole au
+  // lieu de s'arrêter. Les tringleries d'un vrai régulateur ne descendent pas si
+  // bas ; on leur laisse le même jeu. Rien ici ne touche au modèle : c'est une
+  // commande impossible que l'écran ne propose pas.
+  const REGULATEUR_FERME = 0.02;
+
+  // Le régulateur dose la vapeur admise. Il ne décale pas l'excentrique : l'avance
+  // reste celle du modèle, à 0,5 (glossaire : Avance sur l'excentrique).
+  function regulateurDuCurseur(pourCent) {
+    return Math.max(REGULATEUR_FERME, commandeDuCurseur(pourCent));
+  }
+
+  // --- Le temps de l'image ---
+
+  // Les vitesses du temps : ×1, ×2, ×4. Elles ajoutent des pas par image et jamais
+  // un pas plus grand (spec, décision 13) : la montée en pression reste vraie, la
+  // leçon arrive seulement plus vite. Un palier inconnu retombe sur ×1.
+  const VITESSES_DU_TEMPS = [1, 2, 4];
+
+  function pasDeLImage(vitesse) {
+    return VITESSES_DU_TEMPS.includes(vitesse) ? vitesse : 1;
+  }
+
+  // Faire passer une image, c'est laisser le modèle avancer `duree` secondes autant
+  // de fois que le palier le demande. La durée de chaque pas ne bouge pas.
+  function passerLImage(engin, monde, { duree, vitesse = 1 }) {
+    const pas = pasDeLImage(vitesse);
+    for (let i = 0; i < pas; i += 1) modeleVapeur.simuler(engin, monde, { duree });
+    return pas;
+  }
+
+  // --- Ce que la machine a à dire de reste ---
+
+  // Les comptes que l'élève relève entre deux essais. Le modèle les tient déjà
+  // (spec, décision 18) : les règles n'ouvrent aucun compteur à elles, elles
+  // nomment ce qui s'affiche.
+  function comptesVus(engin) {
+    return {
+      distance: engin.distance,
+      tours: engin.machine.tours,
+      charbonBrule: engin.charbonBrule,
+      secondes: engin.tempsEcoule,
+    };
+  }
+
+  // Un réservoir embarqué : ce qu'il contient, ce qu'il pourrait contenir, la part
+  // faite, et le mot du chauffeur. La capacité vient du catalogue du modèle, pas
+  // d'une jauge inventée ici. Les mots sont au féminin : soute et citerne le sont.
+  const MOTS_DE_NIVEAU = [
+    { aPartirDe: 0.75, mots: 'pleine' },
+    { aPartirDe: 0.45, mots: 'à moitié' },
+    { aPartirDe: 0.15, mots: 'basse' },
+    { aPartirDe: 0.02, mots: 'presque vide' },
+    { aPartirDe: -Infinity, mots: 'vide' },
+  ];
+
+  function reservoirVue(niveau, capacite) {
+    const plein = capacite > 0 ? borne01(niveau / capacite) : 0;
+    const note = MOTS_DE_NIVEAU.find((m) => plein >= m.aPartirDe);
+    return { niveau, capacite, plein, mot: note.mots };
+  }
+
+  function reservoirsVus(engin) {
+    return {
+      soute: reservoirVue(engin.soute, engin.capacite('soute')),
+      citerne: reservoirVue(engin.citerne, engin.capacite('citerne')),
+    };
+  }
+
+  // Le rendement : le seul score du jeu (adr 0004). Le modèle rend null tant
+  // qu'aucun charbon n'est brûlé ; l'écran refuse alors le chiffre — ni zéro, ni
+  // infini, ni « NaN ». Un 0 affiché avant la première pelletée enseignerait que
+  // la machine a déjà consommé pour ne rien faire.
+  const MOT_DU_RENDEMENT = 'distance par charbon';
+  const RENDEMENT_EN_ATTENTE = 'attend le charbon';
+
+  function rendementVu(engin) {
+    const compte = engin.bilan();
+    const valeur = compte.rendement;
+    if (typeof valeur !== 'number' || !Number.isFinite(valeur) || valeur < 0) {
+      return { valeur: null, chiffres: null, mot: RENDEMENT_EN_ATTENTE };
+    }
+    return {
+      valeur,
+      chiffres: `${valeur.toFixed(1).replace('.', ',')} m par kg`,
+      mot: MOT_DU_RENDEMENT,
+    };
+  }
+
   function vitesseDite(engin) {
     // La vitesse angulaire est signée : la marche arrière est négative. La
     // grandeur se lit en chiffres, le signe passe au sens — une jauge qui
@@ -794,6 +934,25 @@ const reglesDuJeu = (() => {
     };
   }
 
+  // Ce que la chaudière montre : l'eau qu'elle garde encore, et si la tôle est en
+  // train de travailler. Le niveau se dessine, il ne se raconte pas seulement.
+  function chaudiereVue(engin) {
+    const chaudiere = engin.chaudiere;
+    return {
+      niveauEau: borne01(chaudiere.niveauEau),
+      aSec: chaudiere.aSec,
+      danger: chaudiere.danger,
+    };
+  }
+
+  // La mémoire du jeu : ce qui survit d'un essai à l'autre, et qui ne tient donc
+  // ni dans l'engin ni dans l'image. Elle s'ouvre vide — aucun débloquage, aucun
+  // refroidissement, aucun record. Les tickets suivants y brancheront la Braise,
+  // le garage et le meilleur rendement ; ici elle ne sait encore rien.
+  function nouvelleMemo() {
+    return { refroidissements: {}, deblocages: [], meilleurRendement: null };
+  }
+
   // L'unique interface lue par la projection (spec, décision 3). Si l'affichage
   // a besoin d'une valeur de plus, c'est ici qu'elle entre — jamais un plongeon
   // dans l'engin.
@@ -801,7 +960,13 @@ const reglesDuJeu = (() => {
     const s = situation(engin, monde);
     return {
       situation: s,
+      // Ce que le chauffeur a demandé, tel que le modèle le garde : l'écran rend
+      // la commande réelle, pas la position du curseur.
+      commandes: { feu: engin.commandes.feu, regulateur: engin.commandes.regulateur },
       mot: MOTS_DE_SITUATION[s],
+      // La forme qui va avec le mot. La projection la dessine ; elle ne devine
+      // jamais l'état à la couleur.
+      forme: FORMES_DE_SITUATION[s],
       jauge: jaugeDePression(engin),
       vitesse: vitesseDite(engin),
       machine: etatDeLaMachine(engin),
@@ -809,12 +974,19 @@ const reglesDuJeu = (() => {
       pieces: piecesPortees(engin),
       fumee: fumeeDite(engin),
       sol: solVu(engin, monde),
+      chaudiere: chaudiereVue(engin),
+      comptes: comptesVus(engin),
+      reservoirs: reservoirsVus(engin),
+      rendement: rendementVu(engin),
     };
   }
 
   const reglesDuJeu = {
-    situation, etatDuJeu, MOTS_DE_SITUATION, FEU_BAS, ZONE_SOUPAPE, PIECES_DE_BASE,
-    ELAN_DE_LA_BARRE, elanDeLaBarre,
+    situation, etatDuJeu, MOTS_DE_SITUATION, FORMES_DE_SITUATION, FEU_BAS, ZONE_SOUPAPE,
+    PIECES_DE_BASE, ELAN_DE_LA_BARRE, elanDeLaBarre,
+    commandeDuCurseur, regulateurDuCurseur, REGULATEUR_FERME,
+    VITESSES_DU_TEMPS, pasDeLImage, passerLImage,
+    nouvelleMemo, MOT_DU_RENDEMENT, RENDEMENT_EN_ATTENTE,
   };
   return reglesDuJeu;
 })();
@@ -838,15 +1010,28 @@ const reglesDuJeu = (() => {
     pause: document.getElementById('pause'),
     feu: document.getElementById('feu'),
     feuDit: document.getElementById('feu-dit'),
+    regulateur: document.getElementById('regulateur'),
+    regulateurDit: document.getElementById('regulateur-dit'),
     barre: document.getElementById('barre'),
+    paliers: Array.from(document.querySelectorAll('#vitesse-temps .palier')),
+    distanceDits: document.getElementById('distance-dits'),
+    toursDits: document.getElementById('tours-dits'),
+    souteDite: document.getElementById('soute-dite'),
+    citerneDite: document.getElementById('citerne-dite'),
+    rendementDit: document.getElementById('rendement-dit'),
   };
 
   // --- Le départ : la machine des treize pièces, chauffée, sur le plat ---
   const monde = M.nouveauMonde({ pente: 0, bosses: [] });
   const engin = M.nouvelEngin(R.PIECES_DE_BASE);
-  engin.commandes.regulateur = 1;   // la vapeur est ouverte ; le levier aura son billet
   let feuDemande = 0.8;
   engin.commandes.feu = feuDemande;
+  engin.commandes.regulateur = R.regulateurDuCurseur(100);   // la vapeur est grande ouverte
+
+  // La mémoire du jeu, telle que les règles l'ouvrent : vide. Aucun refroidissement
+  // de Braise, aucun débloquage du garage, aucun record. Le ticket qui les écrit y
+  // trouvera une place faite ; aujourd'hui rien ne la consulte.
+  const memo = R.nouvelleMemo();
 
   // On ouvre le rideau sur une chaudière chaude : sans ça, il faudrait une
   // minute de feu avant que l'écran montre quoi que ce soit.
@@ -859,6 +1044,9 @@ const reglesDuJeu = (() => {
   const PAS_MAX_PAR_IMAGE = 1 / 20;
   let enPause = false;
   let instantPrecedent = null;
+  // Le palier choisi : ×1, ×2, ×4. Il ajoute des pas par image, il n'allonge
+  // jamais le pas (spec, décision 13).
+  let vitesseDuTemps = 1;
 
   // --- Le dessin ---
   const ECHELLE = 90;      // pixels par mètre
@@ -1048,21 +1236,45 @@ const reglesDuJeu = (() => {
 
     if (p.foyer) {
       rect(D.foyer.x0, D.foyer.y0, D.foyer.x1 - D.foyer.x0, D.foyer.y1 - D.foyer.y0, CHARS.fer);
-      // le feu du chauffeur, tel qu'il l'a réglé
+      // le feu du chauffeur, tel qu'il l'a réglé ; éteint, le foyer ne montre plus
+      // que sa gueule vide — l'arrêt se voit, il ne se devine pas à une nuance
       const braise = etat.fumee.densite;
-      rect(D.foyer.x0 + 0.06, D.foyer.y0 + 0.05, D.foyer.x1 - D.foyer.x0 - 0.12, 0.18 + 0.12 * braise, `rgba(226, 98, 43, ${0.25 + 0.7 * braise})`);
+      if (braise > 0) {
+        rect(D.foyer.x0 + 0.06, D.foyer.y0 + 0.05, D.foyer.x1 - D.foyer.x0 - 0.12, 0.18 + 0.12 * braise, `rgba(226, 98, 43, ${0.25 + 0.7 * braise})`);
+      } else {
+        rect(D.foyer.x0 + 0.06, D.foyer.y0 + 0.05, D.foyer.x1 - D.foyer.x0 - 0.12, 0.18, '#1b2027');
+        trait(D.foyer.x0 + 0.08, D.foyer.y0 + 0.07, D.foyer.x1 - 0.08, D.foyer.y0 + 0.2, '#39424c', 0.03);
+      }
     }
-    if (p.soute) rect(-2.15, 1.0, 0.4, 0.5, CHARS.goudron);
+    if (p.soute) dessineLaSoute(etat);
     if (p.chaudiere) {
       rect(D.chaudiere.x0, D.chaudiere.y - D.chaudiere.rayon, D.chaudiere.x1 - D.chaudiere.x0, 2 * D.chaudiere.rayon, CHARS.fer);
-      rect(D.chaudiere.x0, D.chaudiere.y - 0.06, D.chaudiere.x1 - D.chaudiere.x0, 0.12, CHARS.ferClair);
-      // le dôme du régulateur, la citerne d'eau, la soupape
-      if (p.regulateur) disque(-0.7, D.chaudiere.y + D.chaudiere.rayon, 0.16, CHARS.ferClair);
-      if (p.citerne) {
-        rect(-1.52, D.chaudiere.y + D.chaudiere.rayon, 0.6, 0.26, '#4a6572');
-        rect(-1.52, D.chaudiere.y + D.chaudiere.rayon + 0.14, 0.6, 0.12, '#6d93a6');
+      // l'eau de la chaudière : le niveau se dessine, et une couronne à nu se voit
+      const cuve = {
+        x0: D.chaudiere.x0 + 0.04, x1: D.chaudiere.x1 - 0.04,
+        bas: D.chaudiere.y - D.chaudiere.rayon + 0.04, hauteur: 2 * D.chaudiere.rayon - 0.08,
+      };
+      rect(cuve.x0, cuve.bas, cuve.x1 - cuve.x0, cuve.hauteur * etat.chaudiere.niveauEau, '#3f5a68');
+      if (etat.chaudiere.aSec) {
+        // la tôle du foyer n'est plus couverte d'eau : c'est ainsi qu'on la brûle
+        rect(D.foyer.x0 + 0.04, D.foyer.y1 - 0.08, D.foyer.x1 - D.foyer.x0 - 0.08, 0.1, '#8f3a1c');
       }
-      if (p.soupape) rect(D.soupape.x - 0.07, D.chaudiere.y + D.chaudiere.rayon, 0.14, 0.2, CHARS.cuivre);
+      rect(D.chaudiere.x0, D.chaudiere.y - 0.06, D.chaudiere.x1 - D.chaudiere.x0, 0.12, 'rgba(150, 163, 176, 0.45)');
+      if (etat.chaudiere.danger) gondoleLaTole();
+      // le dôme du régulateur, la citerne d'eau, la soupape
+      if (p.regulateur) {
+        disque(-0.7, D.chaudiere.y + D.chaudiere.rayon, 0.16, CHARS.ferClair);
+        // le papillon du régulateur : fermé, il ne laisse plus qu'un filet
+        const ouverture = 1 - etat.commandes.regulateur;
+        trait(-0.78, D.chaudiere.y + D.chaudiere.rayon, -0.78 + 0.16 * ouverture, D.chaudiere.y + D.chaudiere.rayon + 0.16, CHARS.cuivre, 0.04);
+      }
+      if (p.citerne) dessineLaCiterne(etat);
+      if (p.soupape) {
+        // la soupape se soulève quand elle siffle : le geste de la vapeur qui s'en va
+        const soulevee = etat.jauge.souffle ? 0.09 : 0;
+        rect(D.soupape.x - 0.07, D.chaudiere.y + D.chaudiere.rayon + soulevee, 0.14, 0.2, CHARS.cuivre);
+        if (soulevee) trait(D.soupape.x, D.chaudiere.y + D.chaudiere.rayon + 0.24, D.soupape.x, D.chaudiere.y + D.chaudiere.rayon + 0.34, CHARS.vapeur, 0.05);
+      }
     }
     if (p.boite_a_fumee) rect(D.boiteFumee.x0, D.chaudiere.y - 0.5, D.boiteFumee.x1 - D.boiteFumee.x0, 1.0, '#59636f');
     rect(D.cheminee.x - D.cheminee.demi, D.cheminee.y0, 2 * D.cheminee.demi, D.cheminee.y1 - D.cheminee.y0, CHARS.ferClair);
@@ -1118,10 +1330,59 @@ const reglesDuJeu = (() => {
       y: AXE.y + D.manivelle * Math.sin(a),
     };
     if (p.bielle) trait(vilebrequin.x, vilebrequin.y, positionDuPiston(etat) - 0.12, AXE.y, CHARS.ferClair, 0.05);
+    // Une machine prise à son point mort : la manivelle et la tige sont d'aplomb,
+    // la vapeur pousse dans l'axe et rien ne tourne. On le trace, sinon l'élève ne
+    // voit qu'une roue immobile.
+    if (etat.forme === 'croix') {
+      trait(AXE.x, AXE.y, D.cylindre.x1 + 0.2, AXE.y, '#efe7d8', 0.025, [0.09, 0.07]);
+      disque(vilebrequin.x, vilebrequin.y, 0.05, '#efe7d8');
+    }
     disque(AXE.x, AXE.y, 0.09, CHARS.ferClair);
     trait(AXE.x, AXE.y, vilebrequin.x, vilebrequin.y, CHARS.cuivre, 0.06);
 
+    // Une roue qui patine marque le rail sans emporter la machine.
+    if (etat.forme === 'triangle') {
+      for (let k = 0; k < 3; k += 1) {
+        trait(0.3 + k * 0.26, 0.02, 0.46 + k * 0.26, 0.02, '#d9c9a3', 0.035);
+      }
+    }
+
     crayon.restore();
+  }
+
+  // La soute : ce qui reste à brûler, dessiné à l'échelle du coffre.
+  function dessineLaSoute(etat) {
+    const plein = etat.reservoirs.soute.plein;
+    rect(-2.15, 1.0, 0.4, 0.5, CHARS.goudron);
+    rect(-2.11, 1.03, 0.32, 0.44 * plein, '#57504a');
+    trait(-2.15, 1.0, -1.75, 1.0, CHARS.ferClair, 0.02);
+  }
+
+  // La citerne : ce qui reste à vaporiser.
+  function dessineLaCiterne(etat) {
+    const y = D.chaudiere.y + D.chaudiere.rayon;
+    rect(-1.52, y, 0.6, 0.26, '#4a6572');
+    rect(-1.5, y + 0.02, 0.56, 0.22 * etat.reservoirs.citerne.plein, '#6d93a6');
+  }
+
+  // La tôle qui travaille : le dessus de la chaudière gondole. Un dessin, pas une
+  // couleur — l'état doit se voir même en noir et blanc.
+  function gondoleLaTole() {
+    const y = D.chaudiere.y + D.chaudiere.rayon;
+    crayon.strokeStyle = '#efe7d8';
+    crayon.lineWidth = 0.04;
+    crayon.beginPath();
+    crayon.moveTo(D.chaudiere.x0 + 0.05, y);
+    let x = D.chaudiere.x0 + 0.05;
+    let bosse = 1;
+    while (x < D.chaudiere.x1 - 0.1) {
+      x += 0.28;
+      crayon.lineTo(x, y + 0.11 * bosse);
+      x += 0.28;
+      crayon.lineTo(x, y);
+      bosse = -bosse;
+    }
+    crayon.stroke();
   }
 
   // La crosse suit la manivelle, corde au pied de la bielle : de la géométrie,
@@ -1161,13 +1422,15 @@ const reglesDuJeu = (() => {
     crayon.lineWidth = largeur;
     crayon.stroke();
   }
-  function trait(x0, y0, x1, y1, couleur, largeur) {
+  function trait(x0, y0, x1, y1, couleur, largeur, pointilles) {
     crayon.strokeStyle = couleur;
     crayon.lineWidth = largeur;
+    if (pointilles) crayon.setLineDash(pointilles);
     crayon.beginPath();
     crayon.moveTo(x0, y0);
     crayon.lineTo(x1, y1);
     crayon.stroke();
+    if (pointilles) crayon.setLineDash([]);
   }
 
   // --- Le manomètre, en haut à droite : la jauge et sa zone de soupape ---
@@ -1232,21 +1495,122 @@ const reglesDuJeu = (() => {
     crayon.fillText(j.souffle ? 'la soupape souffle' : 'pression', cx, cy + r * 0.86);
   }
 
+  // --- Le badge de la situation : un mot et une forme ---
+  // Sept noms, sept formes, aucune commune. Le fond et le trait restent les mêmes
+  // quel que soit l'état : ce n'est jamais la couleur qui porte le sens (spec,
+  // décision 4). Le mot est écrit à côté, dans la langue du glossaire.
+  function dessineLeBadge(etat) {
+    const cote = Math.max(26, Math.round(Math.min(large, haut) * 0.08));
+    const x = 20 + cote / 2;
+    const y = 20 + cote / 2;
+    crayon.save();
+    crayon.lineWidth = 3;
+    crayon.strokeStyle = '#efe7d8';
+    crayon.fillStyle = 'rgba(16, 22, 28, 0.8)';
+    tracerLaForme(etat.forme, x, y, cote / 2);
+    crayon.fill('evenodd');
+    crayon.stroke();
+    crayon.fillStyle = '#efe7d8';
+    crayon.font = `600 ${Math.round(cote * 0.4)}px system-ui, sans-serif`;
+    crayon.textAlign = 'left';
+    crayon.textBaseline = 'middle';
+    crayon.fillText(etat.mot, x + cote * 0.75, y);
+    crayon.restore();
+  }
+
+  // Les sept formes, tracées dans le repère de l'écran (y vers le bas). Une forme
+  // inconnue retombe sur le disque : l'écran ne laisse jamais un état sans dessin.
+  function tracerLaForme(forme, x, y, r) {
+    crayon.beginPath();
+    if (forme === 'carre') { crayon.rect(x - r, y - r, 2 * r, 2 * r); return; }
+    if (forme === 'losange') { polygone([[x, y - r], [x + r, y], [x, y + r], [x - r, y]]); return; }
+    if (forme === 'triangle') { polygone([[x, y - r], [x + r, y + r], [x - r, y + r]]); return; }
+    if (forme === 'croix') {
+      const b = r * 0.36;
+      polygone([
+        [x - b, y - r], [x + b, y - r], [x + b, y - b], [x + r, y - b], [x + r, y + b], [x + b, y + b],
+        [x + b, y + r], [x - b, y + r], [x - b, y + b], [x - r, y + b], [x - r, y - b], [x - b, y - b],
+      ]);
+      return;
+    }
+    if (forme === 'eclair') {
+      polygone([[x - r * 0.15, y - r], [x + r * 0.75, y - r * 0.2], [x + r * 0.2, y - r * 0.1],
+        [x + r * 0.1, y + r], [x - r * 0.75, y + r * 0.1], [x - r * 0.2, y + r * 0.05]]);
+      return;
+    }
+    if (forme === 'goutte_baree') {
+      // une goutte, et la barre qui la coupe : l'eau manque, la tôle est à nu
+      crayon.moveTo(x, y - r);
+      crayon.bezierCurveTo(x + r, y - r * 0.1, x + r * 0.7, y + r, x, y + r);
+      crayon.bezierCurveTo(x - r * 0.7, y + r, x - r, y - r * 0.1, x, y - r);
+      crayon.rect(x - r, y - r * 0.12, 2 * r, r * 0.24);
+      return;
+    }
+    crayon.arc(x, y, r, 0, 2 * Math.PI);   // 'disque'
+  }
+
+  function polygone(sommets) {
+    sommets.forEach(([px, py], i) => (i ? crayon.lineTo(px, py) : crayon.moveTo(px, py)));
+    crayon.closePath();
+  }
+
   // --- Les mots de l'écran ---
   function ecrire(el, texte) {
     if (el.textContent !== texte) el.textContent = texte;
   }
+
+  // Un mètre ou quatre cents : le nombre suit ce qu'on a couvert.
+  function motsDeDistance(metres) {
+    return metres >= 1000
+      ? `${(metres / 1000).toFixed(2).replace('.', ',')} km`
+      : `${Math.round(metres)} m`;
+  }
+  function motsDeTours(tours) {
+    const n = Math.floor(tours);
+    return `${n.toLocaleString('fr-FR')} tour${n > 1 ? 's' : ''}`;
+  }
+  // Le niveau d'une soute ou d'une citerne : la part qui reste, et le mot du
+  // chauffeur. Les chiffres viennent de l'état du jeu, jamais d'un compteur d'écran.
+  function motsDeNiveau(reservoir) {
+    return `${Math.round(reservoir.plein * 100)} % — ${reservoir.mot}`;
+  }
+  // Le rendement se refuse : tant que le charbon dort, l'écran montre un tiret et
+  // le mot qui dit l'attente — jamais un zéro, jamais un « NaN ».
+  function motsDeRendement(rendement) {
+    return rendement.chiffres === null ? `— ${rendement.mot}` : rendement.chiffres;
+  }
+
   function metsALjour(etat) {
     ecrire(vues.chiffres, etat.vitesse.chiffres);
     ecrire(vues.allure, etat.vitesse.mots);
     ecrire(vues.situation, etat.mot);
     ecrire(vues.feuDit, `${Math.round(feuDemande * 100)} %`);
+    // Le régulateur affiche la commande telle que les règles l'ont rendue : fermé à
+    // fond, le curseur dit qu'il reste du jeu, parce qu'il en reste.
+    ecrire(vues.regulateurDit, `${Math.round(engin.commandes.regulateur * 100)} %`);
+    ecrire(vues.distanceDits, motsDeDistance(etat.comptes.distance));
+    ecrire(vues.toursDits, motsDeTours(etat.comptes.tours));
+    ecrire(vues.souteDite, motsDeNiveau(etat.reservoirs.soute));
+    ecrire(vues.citerneDite, motsDeNiveau(etat.reservoirs.citerne));
+    ecrire(vues.rendementDit, motsDeRendement(etat.rendement));
   }
 
   // --- Les gestes ---
   function reglerLeFeu(pourCent) {
-    feuDemande = Math.min(1, Math.max(0, pourCent / 100));
+    feuDemande = R.commandeDuCurseur(pourCent);
     engin.commandes.feu = feuDemande;   // la seule écriture permise : une commande
+  }
+  // Le régulateur dose la vapeur admise au cylindre. Il ne touche pas à l'avance de
+  // l'excentrique : le tiroir garde sa place, seule la pression change.
+  function reglerLeRegulateur(pourCent) {
+    engin.commandes.regulateur = R.regulateurDuCurseur(pourCent);
+  }
+  // Choisir un palier de temps : la montre du joueur, pas celle du modèle.
+  function choisirLaVitesseDeTemps(palier) {
+    vitesseDuTemps = R.pasDeLImage(Number(palier));
+    for (const bouton of vues.paliers) {
+      bouton.setAttribute('aria-pressed', Number(bouton.dataset.vitesse) === vitesseDuTemps ? 'true' : 'false');
+    }
   }
   function coupDeBarre() {
     // Le geste rend l'élan que disent les règles : de quoi repartir du point mort,
@@ -1259,11 +1623,16 @@ const reglesDuJeu = (() => {
   }
 
   vues.feu.addEventListener('input', () => reglerLeFeu(Number(vues.feu.value)));
+  vues.regulateur.addEventListener('input', () => reglerLeRegulateur(Number(vues.regulateur.value)));
   vues.barre.addEventListener('click', coupDeBarre);
+  for (const bouton of vues.paliers) {
+    bouton.addEventListener('click', () => choisirLaVitesseDeTemps(bouton.dataset.vitesse));
+  }
   window.addEventListener('keydown', (e) => {
     if (e.repeat) return;   // un geste = une poussée
     const cible = e.target;
     const dansUnBouton = cible && cible.tagName === 'BUTTON';
+    const dansUnCurseur = cible && cible.tagName === 'INPUT';
     if (e.code === 'Space' || e.key === ' ' || e.key === 'Spacebar') {
       if (dansUnBouton) return;   // le bouton pousse déjà
       e.preventDefault();
@@ -1271,6 +1640,9 @@ const reglesDuJeu = (() => {
     } else if (e.key === 'p' || e.key === 'P') {
       e.preventDefault();
       basculerPause();
+    } else if (!dansUnCurseur && R.VITESSES_DU_TEMPS.includes(Number(e.key))) {
+      e.preventDefault();
+      choisirLaVitesseDeTemps(e.key);
     }
   });
 
@@ -1278,13 +1650,15 @@ const reglesDuJeu = (() => {
   function image(instant) {
     const ecoule = instantPrecedent === null ? 0 : Math.min((instant - instantPrecedent) / 1000, PAS_MAX_PAR_IMAGE);
     instantPrecedent = instant;
-    if (!enPause && ecoule > 0) M.simuler(engin, monde, { duree: ecoule });
+    // Une image, c'est le même pas de modèle, autant de fois que le palier le demande.
+    if (!enPause && ecoule > 0) R.passerLImage(engin, monde, { duree: ecoule, vitesse: vitesseDuTemps });
     const etat = R.etatDuJeu(engin, monde);
     crayon.clearRect(0, 0, large, haut);
     dessineLeSol(etat);
     dessineLengin(etat);
     avaleLaFumee(etat, enPause ? 0 : ecoule);
     dessineLaJauge(etat);
+    dessineLeBadge(etat);
     metsALjour(etat);
     window.requestAnimationFrame(image);
   }
