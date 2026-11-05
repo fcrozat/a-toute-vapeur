@@ -1,24 +1,39 @@
-// Harnais de test : le modèle physique vit dans le fichier unique `index.html`
-// (ADR 0002 : aucun build, double-clic obligatoire). Il est délimité par deux
-// marques, et on va le chercher là sans le dupliquer ni le découper à la main.
+// Harnais de test : tout le jeu vit dans le fichier unique `index.html`
+// (ADR 0002 : aucun build, double-clic obligatoire). Chaque section sans affichage
+// est délimitée par sa propre paire de marques, et on va la chercher là sans la
+// dupliquer ni la découper à la main.
 
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 
-const MARQUE_DEBUT = '// ===== MODELE : DEBUT =====';
-const MARQUE_FIN = '// ===== MODELE : FIN =====';
+// Deux sections se passent l'une à l'autre : le modèle physique, puis les règles
+// du jeu, qui lisent le modèle et rendent ce que l'écran affiche. Aucune des deux
+// ne voit le navigateur — c'est une promesse, pas une convention.
+const SECTIONS = {
+  modele: { debut: '// ===== MODELE : DEBUT =====', fin: '// ===== MODELE : FIN =====' },
+  regles: { debut: '// ===== REGLES : DEBUT =====', fin: '// ===== REGLES : FIN =====' },
+};
 
-export function sourceModele() {
+function sourceSection(nom) {
+  const marques = SECTIONS[nom];
   const fichier = fileURLToPath(new URL('../index.html', import.meta.url));
   const source = readFileSync(fichier, 'utf8');
-  const debut = source.indexOf(MARQUE_DEBUT);
-  const fin = source.indexOf(MARQUE_FIN);
+  const debut = source.indexOf(marques.debut);
+  const fin = source.indexOf(marques.fin);
   if (debut < 0 || fin < 0 || fin < debut) {
     throw new Error(
-      `Section modèle introuvable dans index.html : les marques « ${MARQUE_DEBUT} » et « ${MARQUE_FIN} » doivent l'encadrer.`
+      `Section ${nom} introuvable dans index.html : les marques « ${marques.debut} » et « ${marques.fin} » doivent l'encadrer.`
     );
   }
-  return source.slice(debut + MARQUE_DEBUT.length, fin);
+  return source.slice(debut + marques.debut.length, fin);
+}
+
+export function sourceModele() {
+  return sourceSection('modele');
+}
+
+export function sourceRegles() {
+  return sourceSection('regles');
 }
 
 // Le modèle est un script simple, sans import : on l'évalue tel quel et on
@@ -27,4 +42,12 @@ export function sourceModele() {
 export function chargerModele() {
   const fabrique = new Function(`${sourceModele()}\nreturn modeleVapeur;`);
   return fabrique();
+}
+
+// Les règles sont écrites à côté du modèle et s'appuient sur lui : on le leur
+// donne comme il le reçoit à l'écran, sous le même nom. Ce que voient les tests
+// est donc exactement ce que le navigateur exécute.
+export function chargerRegles() {
+  const fabrique = new Function('modeleVapeur', `${sourceRegles()}\nreturn reglesDuJeu;`);
+  return fabrique(chargerModele());
 }
