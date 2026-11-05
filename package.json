@@ -1,0 +1,10 @@
+{
+  "name": "a-toute-vapeur",
+  "version": "0.1",
+  "private": true,
+  "description": "Jeu de construction : un engin mû par une machine à vapeur. Le jeu lui-même est le fichier index.html, sans aucune dépendance.",
+  "type": "module",
+  "scripts": {
+    "test": "node --test tests/"
+  }
+}

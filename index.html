@@ -1,0 +1,531 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>À toute vapeur</title>
+  <!--
+    À toute vapeur — un engin, une chaudière, et douze promesses tenues.
+    Licence : AGPLv3 pour le code (voir LICENSE) ; CC BY-SA 4.0 pour les dessins,
+    les textes de Braise et les sons. Dépôt : https://github.com/fcrozat/moteur-vapeur
+  -->
+</head>
+<body>
+  <!-- Le monde, la coupe et l'établi arrivent dès que les douze promesses tiennent. -->
+  <p>Modèle physique vérifié par <code>npm test</code>. Rendu à venir.</p>
+  <script>
+// ===== MODELE : DEBUT =====
+// Le modèle compte, il ne dessine rien. C'est lui qui doit avoir raison.
+//
+// Unités de jeu : tonnes, kilonewtons, mètres, secondes, et un « muid » d'eau
+// vaporisée, unité arbitraire qui permet de ne jamais montrer une formule.
+// Deux libertés prises avec la réalité, toutes deux assumées :
+//  - l'engin entier tient dans un seul degré de liberté (l'arbre de la machine),
+//    la masse du véhicule y étant convertie ;
+//  - les volumes de cylindre sont sans dimension, à un coefficient près.
+const modeleVapeur = (() => {
+  // Chaudière
+  const PRESSION_AMBIANTE = 1;
+  const PRESSION_MAX = 12;
+  const PRESSION_SOUPAPE = 11;
+  const CAPACITE_CHAUDIERE = 6;   // muids par bar : ce que la chaudière contient
+  const PUISSANCE_FOYER = 1;      // muids vaporisés par seconde, feu d'enfer, tirage ordinaire
+  const CHARBON_PAR_SECOND = 0.35; // kg brûlés par seconde à feu d'enfer
+  const EAU_PAR_MUID = 0.01;      // fraction du niveau vaporisée par muid
+  const SEUIL_EAU_BAS = 0.06;     // en dessous, la tôle travaille et ça ne fait plus de vapeur
+  const FUITE_CHAUDIERE = 0.01;   // muids qui s'échappent des joints par seconde
+
+  // Cylindre et distribution
+  const FORCE_CYLINDRE = 1.2;       // kN·m par bar, surface et rayon ramenés à un seul nombre
+  const SECTION_TIGE = 0.12;      // la tige mange de la surface côté vilebrequin
+  const VOLUME_CLAIR = 0.15;      // le tord-mort qui empêche la vapeur de disparaître
+  const INDICE_POLYTROPIQUE = 1.3;
+  const FUITE_SEEAU = 0.25;       // les segments laissent passer : le ressort s'affaisse
+  const FUITE_MACHINE = 0.02;
+  const CONSO_PAR_VOLUME = 0.8;   // muids avalés par volume de cylindre rempli
+  const CONDUCTANCE_MAX = 0.6;    // régulateur ouvert au maximum
+  const OUVERTURE_MIN = 0.05;
+  const AVANCE_NOMINALE = 0.5;    // l'excentrique, calé en avant de 0,5 rad
+  const RECOUVREMENT = 0.45;      // le tiroir recouvre largement ses lumières
+
+  // Sol, roues, inertie
+  const GRAVITE = 9.81;
+  const RAYON_ROUE = 0.6;
+  const RAPPORT = 3;              // l'arbre tourne trois fois plus vite que les roues
+  const PENTE_ROULAGE = 0.02;
+  const AERODYNAMIQUE = 0.25;
+  const ADHERENCE = 0.5;         // acier sur acier, les trois cinquièmes du poids sur les motrices
+  const POIDS_MOTEUR = 0.85;
+  const FROTTEMENT_STATIQUE = 0.25;
+  // Paliers, bielle, tiroir, injection d'eau : une machine frotte pour de bon, et
+  // c'est ce qui l'arrete quand le feu tombe. Sans ce terme, un chassis sans
+  // vapeur roulerait des minutes apres la derniere soupire.
+  const FROTTEMENT_ARBRE = 0.35;
+  const INERTIE_MACHINE = 1.2;
+  const INERTIE_VOLANT = 6;
+
+  // Rivales et gags
+  const K_ROUE_A_EAU = 0.55;      // même constante que la pompe : le circuit fermé rend moins
+  const K_POMPE = 0.55;
+  const CHUTE_RIVIERE = 1;
+  const V_COURANT = 2.5;          // une rivière rapide, mais une rivière
+  const RAYON_ROUE_A_EAU = 1.2;
+  const DEBIT_RIVIERE = 3;
+  const DEBIT_CIRCUIT = 1.5;
+  const RENDEMENT_ROUE = 0.7;
+  const CAP_POMPE = 0.8;
+  const RENDEMENT_POMPE = 0.6;
+  const K_EOLIPYLE = 0.35;        // la roue d'Héron : ça tourne, et ça boit
+  const CONSO_EOLIPYLE = 0.9;
+  const K_EOLIENNE = 0.8;
+  const K_VOILE = 1.6;
+  const FORCE_CHEVAL = 1.1;
+  const POUSSEE_FUSEE = 3.2;
+  const HAUSSE_CHAUDIERE = 3;     // mètres à remonter l'eau jusqu'à la chaudière
+  // L'injecteur pousse l'eau dans une chaudière déjà en pression : ça mange à peu
+  // près trois pour cent du travail de la machine, comme sur les vraies.
+  const K_INJECTEUR = 0.015;
+
+  const clamp01 = (v) => (v < 0 ? 0 : v > 1 ? 1 : v);
+  const clamp = (v, bas, haut) => (v < bas ? bas : v > haut ? haut : v);
+
+  // Le catalogue : ce qu'on peut visser sur le châssis. `nom` est le mot vrai du
+  // métier, celui que le joueur survole pour avoir l'explication de Braise.
+  const CATALOGUE = {
+    chaudiere: { nom: 'Chaudière', famille: 'machine', masse: 1.2 },
+    foyer: { nom: 'Foyer', famille: 'machine', masse: 0.15 },
+    soute: { nom: 'Soute à charbon', famille: 'machine', masse: 0.2, capacite: 300 },
+    citerne: { nom: 'Citerne', famille: 'machine', masse: 0.2, capacite: 240 },
+    cylindre: { nom: 'Cylindre', famille: 'machine', masse: 0.35 },
+    tiroir: { nom: 'Tiroir de distribution', famille: 'machine', masse: 0.06 },
+    excentrique: { nom: 'Excentrique', famille: 'machine', masse: 0.05 },
+    regulateur: { nom: 'Régulateur', famille: 'machine', masse: 0.05 },
+    crosse: { nom: 'Crosse de piston', famille: 'machine', masse: 0.05 },
+    bielle: { nom: 'Bielle', famille: 'machine', masse: 0.08 },
+    vilebrequin: { nom: 'Vilebrequin', famille: 'machine', masse: 0.2 },
+    secondes_bielles: { nom: 'Secondes bielles', famille: 'machine', masse: 0.07 },
+    roues: { nom: 'Roues', famille: 'machine', masse: 0.3 },
+    volant: { nom: 'Volant', famille: 'machine', masse: 0.4, inertie: INERTIE_VOLANT },
+    boite_a_fumee: { nom: 'Boîte à fumée', famille: 'machine', masse: 0.12 },
+    tuyere: { nom: "Tuyère d'échappement", famille: 'machine', masse: 0.04 },
+    soupape: { nom: 'Soupape de sûreté', famille: 'machine', masse: 0.03 },
+    second_cylindre: { nom: 'Second cylindre', famille: 'machine', masse: 0.35 },
+    levier_de_detente: { nom: 'Levier de détente', famille: 'machine', masse: 0.05 },
+    changement_de_marche: { nom: 'Changement de marche', famille: 'machine', masse: 0.08 },
+    transmission: { nom: 'Engrenage de transmission', famille: 'machine', masse: 0.1 },
+    pompe: { nom: 'Pompe', famille: 'machine', masse: 0.15 },
+    roue_a_eau: { nom: 'Roue à eau', famille: 'rivale', masse: 0.5 },
+    eolienne: { nom: 'Éolienne', famille: 'rivale', masse: 0.3 },
+    voile: { nom: 'Voile', famille: 'rivale', masse: 0.1 },
+    cheval: { nom: 'Cheval', famille: 'rivale', masse: 0.5 },
+    eolipyle: { nom: 'Éolipyle', famille: 'gag', masse: 0.2 },
+    fusee: { nom: 'Fusée', famille: 'gag', masse: 0.3 },
+    remorque: { nom: 'Remorque', famille: 'gag', masse: 0.8 },
+  };
+
+  // Le tiroir en deux lignes : sa position, commandée par l'excentrique, décide
+  // quel côté reçoit la vapeur vive et lequel rend la sienne.
+  function ouvertures(angle, avance, recouvrement = RECOUVREMENT) {
+    const x = Math.sin(angle + avance);
+    return {
+      avant: clamp01((x - recouvrement) / (1 - recouvrement)),
+      arriere: clamp01((-x - recouvrement) / (1 - recouvrement)),
+    };
+  }
+
+  // Les deux faces du piston, et ce qu'elles contiennent : de la vapeur vive si
+  // le tiroir admet, de la vapeur perdue s'il échappe, la même que la seconde
+  // précédente s'il est couvert — et alors elle se comprime, comme un ressort.
+  function etatCylindre({ angle, pressionAdmission, avance, recouvrement = RECOUVREMENT, scellee, volumes }) {
+    const o = ouvertures(angle, avance, recouvrement);
+    const u = Math.cos(angle);
+    const vAvant = VOLUME_CLAIR + (1 - u) / 2;
+    const vArriere = VOLUME_CLAIR + (1 + u) / 2;
+    const admetAvant = o.avant > OUVERTURE_MIN;
+    const admetArriere = o.arriere > OUVERTURE_MIN;
+    const poly = (p, vOld, vNew) => p * (vOld / vNew) ** INDICE_POLYTROPIQUE;
+    const pAvant = admetAvant ? pressionAdmission : admetArriere ? PRESSION_AMBIANTE : poly(scellee.avant, volumes.avant, vAvant);
+    const pArriere = admetArriere ? pressionAdmission : admetAvant ? PRESSION_AMBIANTE : poly(scellee.arriere, volumes.arriere, vArriere);
+    // Le remplissage : la vapeur vive ne fait pas de magie, elle occupe la place
+    // que le piston lui libère. C'est de là que vient toute la consommation.
+    const remplissage = Math.max(0, vAvant - volumes.avant) + Math.max(0, vArriere - volumes.arriere);
+    return {
+      pAvant, pArriere, remplissage,
+      couvert: !admetAvant && !admetArriere,
+      nouveau: { scellee: { avant: pAvant, arriere: pArriere }, volumes: { avant: vAvant, arriere: vArriere } },
+    };
+  }
+
+  // Couple d'un cylindre à double effet : la différence de pression sur les deux
+  // faces, multiplicée par le bras de levier du vilebrequin.
+  function coupleMachine({
+    angle,
+    pressionAvant,
+    pressionArriere,
+    pressionAdmission,
+    avance = AVANCE_NOMINALE,
+    recouvrement = RECOUVREMENT,
+  }) {
+    const o = ouvertures(angle, avance, recouvrement);
+    const pAvant = pressionAvant ?? (o.avant > OUVERTURE_MIN ? pressionAdmission : PRESSION_AMBIANTE);
+    const pArriere = pressionArriere ?? (o.arriere > OUVERTURE_MIN ? pressionAdmission : PRESSION_AMBIANTE);
+    return FORCE_CYLINDRE * (pAvant - (1 - SECTION_TIGE) * pArriere) * Math.sin(angle);
+  }
+
+  // Le travail rendu sur chaque course d'un tour complet : c'est la définition
+  // même du double effet, et les deux doivent être positifs.
+  function travailParCourse({ pressionAdmission = 6, avance = AVANCE_NOMINALE, recouvrement = RECOUVREMENT } = {}) {
+    const N = 720;
+    let aller = 0;
+    let retour = 0;
+    for (let i = 0; i < N; i++) {
+      const angle = (2 * Math.PI * (i + 0.5)) / N;
+      const c = coupleMachine({ angle, pressionAdmission, avance, recouvrement });
+      if (i < N / 2) aller += c;
+      else retour += c;
+    }
+    return { aller: (aller * 2 * Math.PI) / N, retour: (retour * 2 * Math.PI) / N };
+  }
+
+  function appelDair({ vapeurEchappee = 0 } = {}) {
+    return 1 + 1.1 * clamp01(vapeurEchappee);
+  }
+
+  // Le piège que le jeu doit interdire par les chiffres, pas par une interdiction :
+  // faire retomber l'eau de la roue dans la pompe qui la remonte.
+  function boucleCircuitFerme({ masse = 10, hauteur = 4, rendementRoue = RENDEMENT_ROUE, rendementPompe = RENDEMENT_POMPE } = {}) {
+    return masse * GRAVITE * hauteur * (rendementRoue * rendementPompe - 1);
+  }
+
+  function nouvelEngin(ids = []) {
+    const engin = {
+      pieces: {},
+      ordre: [],
+      distance: 0,
+      charbonBrule: 0,
+      eauPompee: 0,
+      soute: 300,
+      citerne: 240,
+      propergol: 20,
+      avoine: 10,
+      travailUtile: 0,
+      tempsEcoule: 0,
+      vapeurEchappee: 0,
+      circuit: { haut: 0 },
+      chaudiere: {
+        pression: PRESSION_AMBIANTE, niveauEau: 1, soupapeSiffle: false,
+        aSec: false, danger: false, secondesEnDanger: 0,
+      },
+      machine: {
+        angle: 0, vitesseAngulaire: 0, tours: 0, cale: true, patine: false,
+        avance: AVANCE_NOMINALE, recouvrement: RECOUVREMENT, marche: 'avant',
+        scellee: { avant: PRESSION_AMBIANTE, arriere: PRESSION_AMBIANTE },
+        volumes: { avant: VOLUME_CLAIR, arriere: 1 - VOLUME_CLAIR },
+        second: {
+          scellee: { avant: PRESSION_AMBIANTE, arriere: PRESSION_AMBIANTE },
+          volumes: { avant: VOLUME_CLAIR, arriere: 1 - VOLUME_CLAIR },
+        },
+      },
+      commandes: { feu: 0, regulateur: 0, pompe: 0, circuit: 0, eolipyle: 0, fusee: 0 },
+
+      brancher(id) {
+        if (!CATALOGUE[id]) throw new Error(`Pièce inconnue au catalogue : « ${id} »`);
+        this.pieces[id] = (this.pieces[id] || 0) + 1;
+        if (!this.ordre.includes(id)) this.ordre.push(id);
+        return this;
+      },
+      // Le changement de marche renvoie l'excentrique de l'autre côté : le couple
+      // change de signe, et la machine repart en sens inverse.
+      avanceEffective() {
+        return this.machine.marche === 'arriere' ? Math.PI - this.machine.avance : this.machine.avance;
+      },
+      // Ce que les réservoirs embarqués peuvent contenir : charbon ou eau.
+      capacite(id) {
+        return (this.pieces[id] || 0) * (CATALOGUE[id]?.capacite || 0);
+      },
+      masseTotale() {
+        let m = 0.4; // le châssis
+        for (const id of this.ordre) m += CATALOGUE[id].masse * this.pieces[id];
+        return m;
+      },
+      inertie() {
+        let i = INERTIE_MACHINE;
+        for (const id of this.ordre) {
+          if (CATALOGUE[id].inertie) i += CATALOGUE[id].inertie * this.pieces[id];
+        }
+        return i + this.masseTotale() * (RAYON_ROUE / RAPPORT) ** 2;
+      },
+      vitesse() {
+        return this.machine.vitesseAngulaire * (RAYON_ROUE / RAPPORT) * (this.machine.patine ? 0.5 : 1);
+      },
+      mouvement() {
+        return Math.abs(this.machine.vitesseAngulaire) > 1e-3;
+      },
+      // Le coup de barre du chauffeur : un élan, pas un moteur. Personne ne
+      // démarre tout seul au point mort, pas même la mieux réglée des machines.
+      pousser(vitesse = 0.4) {
+        this.machine.vitesseAngulaire = this.machine.marche === 'arriere' ? -vitesse : vitesse;
+        this.machine.cale = false;
+        return this;
+      },
+      fluxEchappe() {
+        // La vapeur usée ne relève le tirage que si elle est chassée par la tuyère,
+        // dans la boîte à fumée, au-dessus du foyer.
+        if (!this.pieces.boite_a_fumee && !this.pieces.tuyere) return 0;
+        return Math.min(1, this.vapeurEchappee / 0.8);
+      },
+      bilan() {
+        return {
+          distance: this.distance,
+          charbonBrule: this.charbonBrule,
+          temps: this.tempsEcoule,
+          puissanceMoyenne: this.tempsEcoule > 0 ? this.travailUtile / this.tempsEcoule : 0,
+          rendement: this.charbonBrule > 0.01 ? this.distance / this.charbonBrule : null,
+          vitesse: this.vitesse(),
+          cale: this.machine.cale,
+        };
+      },
+    };
+    ids.forEach((id) => engin.brancher(id));
+    return engin;
+  }
+
+  // Le terrain : une pente de fond et des bosses. Une bosse se rencontre à un
+  // endroit precis du chemin, et c'est la que la machine doit son inertia.
+  function nouveauMonde({ pente = 0, riviere = false, vent = 0, charbonnage = false, circuit = null, bosses = [] } = {}) {
+    return { pente, riviere, vent, charbonnage, circuit, bosses };
+  }
+
+  function penteReelle(engin, monde) {
+    let pente = monde.pente;
+    for (const b of monde.bosses || []) {
+      if (engin.distance >= b.a && engin.distance < b.a + (b.longueur ?? 10)) pente += b.pente;
+    }
+    return pente;
+  }
+
+  // Ce que le sol oppose : roulement et pente toujours là, l'air seulement vite.
+  function forceDuSol(engin, monde, sens) {
+    const v = Math.abs(engin.vitesse());
+    return engin.masseTotale() * GRAVITE * (PENTE_ROULAGE * sens + penteReelle(engin, monde)) + AERODYNAMIQUE * v * v * sens;
+  }
+
+  function pasDeTemps(engin, monde, dt) {
+    const c = engin.commandes;
+    const chaudiere = engin.chaudiere;
+    const machine = engin.machine;
+    const aLaMachine = Boolean(engin.pieces.cylindre);
+
+    // 1. Le feu. Son intensité dépend du tirage, donc de la vapeur usée qui passe.
+    let coupleInjecteur = 0;
+    const pression0 = chaudiere.pression;
+    const tirage = appelDair({ vapeurEchappee: engin.fluxEchappe() });
+    const peutBruler = engin.pieces.foyer && engin.soute > 0 && c.feu > 0;
+    const puissanceFoyer = peutBruler ? c.feu * PUISSANCE_FOYER * tirage : 0;
+    chaudiere.aSec = chaudiere.niveauEau <= SEUIL_EAU_BAS;
+    const eauDispo = chaudiere.aSec ? Math.max(0, chaudiere.niveauEau / SEUIL_EAU_BAS) : 1;
+    const vapeurCreee = puissanceFoyer * eauDispo * dt;
+    // L'eau bouillie doit être remplacée, et elle entre dans une chaudière sous
+    // pression : l'injecteur la pousse, et ça mange une part du travail de la
+    // machine. Une citerne vide, c'est la machine qui s'arrête — le soutage.
+    const aInjecter = Math.min(vapeurCreee, engin.citerne);
+    engin.citerne -= aInjecter;
+    engin.eauPompee += aInjecter;
+    if (aInjecter > 0) coupleInjecteur = (K_INJECTEUR * aInjecter * (pression0 - PRESSION_AMBIANTE)) / dt;
+    chaudiere.niveauEau = clamp01(chaudiere.niveauEau + (aInjecter - vapeurCreee) * EAU_PAR_MUID);
+    if (peutBruler) {
+      const charbon = Math.min(engin.soute, c.feu * CHARBON_PAR_SECOND * dt);
+      engin.soute -= charbon;
+      engin.charbonBrule += charbon;
+    }
+
+    // 2. Les deux cylindres, la distribution, et ce qu'ils avalent.
+    const omega = machine.vitesseAngulaire;
+    const avance = engin.avanceEffective();
+    const pression = chaudiere.pression;
+    const premiers = aLaMachine
+      ? etatCylindre({ angle: machine.angle, pressionAdmission: pression, avance, recouvrement: machine.recouvrement, scellee: machine.scellee, volumes: machine.volumes })
+      : null;
+    // Le second cylindre est calé au quart du tour : il pousse pendant que le
+    // premier se trouve au point mort.
+    const seconds = aLaMachine && engin.pieces.second_cylindre
+      ? etatCylindre({ angle: machine.angle + Math.PI / 2, pressionAdmission: pression, avance, recouvrement: machine.recouvrement, scellee: machine.second.scellee, volumes: machine.second.volumes })
+      : null;
+
+    const remplissage = (premiers ? premiers.remplissage : 0) + (seconds ? seconds.remplissage : 0);
+    const demande = aLaMachine
+      ? (remplissage / dt) * CONSO_PAR_VOLUME + FUITE_MACHINE * (pression - PRESSION_AMBIANTE)
+      : 0;
+    const eolipyle = engin.pieces.eolipyle ? CONSO_EOLIPYLE * clamp01(c.eolipyle) * (pression - PRESSION_AMBIANTE) : 0;
+    const conductance = engin.pieces.regulateur ? CONDUCTANCE_MAX * clamp01(c.regulateur) : CONDUCTANCE_MAX;
+    const traverse = Math.min(demande, conductance * (pression - PRESSION_AMBIANTE));
+    const reserve = ((pression - PRESSION_AMBIANTE) * CAPACITE_CHAUDIERE) / dt;
+    const prise = Math.min(traverse + eolipyle, vapeurCreee / dt + reserve);
+    const pAdm = clamp(pression - traverse / Math.max(conductance, 1e-9), PRESSION_AMBIANTE, pression);
+    engin.vapeurEchappee = prise;
+
+    // Les pressions reais de part et d'autre du piston, avec la chute au régulateur.
+    if (premiers) {
+      premiers.pAvant = premiers.pAvant > PRESSION_AMBIANTE ? pAdm : premiers.pAvant;
+      premiers.pArriere = premiers.pArriere > PRESSION_AMBIANTE ? pAdm : premiers.pArriere;
+      machine.scellee = premiers.nouveau.scellee;
+      machine.volumes = premiers.nouveau.volumes;
+    }
+    if (seconds) {
+      seconds.pAvant = seconds.pAvant > PRESSION_AMBIANTE ? pAdm : seconds.pAvant;
+      seconds.pArriere = seconds.pArriere > PRESSION_AMBIANTE ? pAdm : seconds.pArriere;
+      machine.second.scellee = seconds.nouveau.scellee;
+      machine.second.volumes = seconds.nouveau.volumes;
+    }
+    // Le ressort de la vapeur scellée s'affaisse : les segments ne sont pas étanches.
+    for (const etat of [machine, machine.second]) {
+      const s = etat.scellee;
+      s.avant += (PRESSION_AMBIANTE - s.avant) * FUITE_SEEAU * dt;
+      s.arriere += (PRESSION_AMBIANTE - s.arriere) * FUITE_SEEAU * dt;
+    }
+
+    // 3. Les sources de mouvement, la machine comprise.
+    let couple = 0;
+    if (premiers) {
+      couple += coupleMachine({ angle: machine.angle, pressionAvant: premiers.pAvant, pressionArriere: premiers.pArriere });
+    }
+    if (seconds) {
+      couple += coupleMachine({
+        angle: machine.angle + Math.PI / 2,
+        pressionAvant: seconds.pAvant,
+        pressionArriere: seconds.pArriere,
+        avance: 0,
+      });
+    }
+    if (engin.pieces.eolipyle) couple += K_EOLIPYLE * eolipyle;
+    if (engin.pieces.eolienne) couple += K_EOLIENNE * monde.vent;
+
+    let forceChassis = 0;
+    if (engin.pieces.voile) forceChassis += K_VOILE * monde.vent;
+    if (engin.pieces.cheval && engin.avoine > 0) {
+      const avoine = Math.min(engin.avoine, 0.05 * dt);
+      engin.avoine -= avoine;
+      if (avoine > 0) forceChassis += FORCE_CHEVAL;
+    }
+    if (engin.pieces.fusee && engin.propergol > 0 && c.fusee > 0) {
+      // Seule exception assumée à la comptabilité : la fusée pousse le châssis
+      // directement, sans arbre ni roue. Elle mange son propergol, et rien d'autre.
+      const brule = Math.min(engin.propergol, c.fusee * 0.4 * dt);
+      engin.propergol -= brule;
+      forceChassis += POUSSEE_FUSEE * (brule / (c.fusee * 0.4 * dt || 1));
+    }
+
+    // 4. La rivière, et le piège du circuit qui se nourrit lui-même.
+    const hauteurCircuit = monde.circuit ? monde.circuit.hauteur : 0;
+    if (engin.pieces.roue_a_eau) {
+      // Une roue à eau ne prend que ce que le courant veut bien lui donner :
+      // à mesure qu'elle tourne vite, l'eau lui échappe.
+      const glissement = clamp01(1 - (Math.abs(omega) * RAYON_ROUE_A_EAU) / V_COURANT);
+      const debitBassin = Math.min(DEBIT_CIRCUIT, Math.max(0, engin.circuit.haut) / dt);
+      const chute = (monde.riviere ? DEBIT_RIVIERE * CHUTE_RIVIERE : 0) + debitBassin * hauteurCircuit;
+      couple += K_ROUE_A_EAU * chute * RENDEMENT_ROUE * glissement;
+      if (debitBassin > 0) engin.circuit.haut = Math.max(0, engin.circuit.haut - debitBassin * dt);
+    }
+    // En mode circuit, la pompe reprend l'eau qui est tombée : la même, toujours
+    // la même. Rien de neuf n'entre, et c'est tout le problème.
+    // Une pompe entraînée à l'envers ne remonte rien : elle ne rend donc pas de
+    // travail non plus. Sans cette précaution, un montage à l'envers créerait de l'eau.
+    if (engin.pieces.pompe && c.pompe > 0 && omega > 1e-3) {
+      // Deux usages, un seul coût : remonter l'eau du bassin (le piège du circuit
+      // fermé), ou puiser à la rivière pour remplir la citerne — le soutage.
+      const puiser = c.circuit <= 0 && monde.riviere;
+      const hauteur = c.circuit > 0 ? hauteurCircuit : HAUSSE_CHAUDIERE;
+      if (hauteur > 0 && (c.circuit > 0 || puiser)) {
+        const debitPompe = CAP_POMPE * clamp01(c.pompe);
+        couple -= (K_POMPE * debitPompe * hauteur) / RENDEMENT_POMPE;
+        engin.eauPompee += debitPompe * dt;
+        if (c.circuit > 0) {
+          engin.circuit.haut += debitPompe * dt;
+        } else {
+          const place = Math.max(0, engin.capacite('citerne') - engin.citerne);
+          engin.citerne += Math.min(place, debitPompe * dt);
+        }
+      }
+    }
+
+    // 5. Ce que le sol et la gravité reprennent.
+    const sens = omega !== 0 ? Math.sign(omega) : Math.sign(couple);
+    const coupleSol = (forceDuSol(engin, monde, sens || 1) * RAYON_ROUE) / RAPPORT;
+    const adhesion = (ADHERENCE * engin.masseTotale() * GRAVITE * POIDS_MOTEUR * RAYON_ROUE) / RAPPORT;
+    machine.patine = Math.abs(coupleSol) > adhesion;
+    const coupleEffectifSol = machine.patine ? Math.sign(coupleSol) * adhesion : coupleSol;
+    const coupleChassis = (forceChassis * RAYON_ROUE) / RAPPORT;
+
+    // La machine porte ses paliers : frotter coute a tous les regimes.
+    const frottementArbre = (engin.pieces.cylindre ? FROTTEMENT_ARBRE : FROTTEMENT_ARBRE * 0.3) * omega;
+    let net = couple + coupleChassis - coupleInjecteur - coupleEffectifSol - frottementArbre;
+    // Une machine qui ne fait plus de tours est une machine calée, quitte à ce
+    // qu'elle oscille encore d'un bord sur l'autre sous la vapeur comprimée.
+    const VITESSE_CALE = 0.15;
+    if (Math.abs(omega) < 1e-4) {
+      const chargeAuRepos = (engin.masseTotale() * GRAVITE * (PENTE_ROULAGE + Math.max(0, penteReelle(engin, monde))) * RAYON_ROUE) / RAPPORT;
+      const seuil = FROTTEMENT_STATIQUE + Math.abs(chargeAuRepos);
+      machine.cale = Math.abs(net) <= seuil;
+      if (machine.cale) net = 0;
+    } else {
+      machine.cale = Math.abs(omega) < VITESSE_CALE;
+    }
+
+    // 6. On avance le temps, et on tient les comptes.
+    machine.vitesseAngulaire += (net / engin.inertie()) * dt;
+    machine.angle = (machine.angle + machine.vitesseAngulaire * dt) % (2 * Math.PI);
+    if (machine.angle < 0) machine.angle += 2 * Math.PI;
+    machine.tours += Math.abs(machine.vitesseAngulaire * dt) / (2 * Math.PI);
+    engin.distance += engin.vitesse() * dt;
+    engin.travailUtile += Math.max(0, couple * omega) * dt;
+    engin.tempsEcoule += dt;
+
+    // L'eau ne part qu'une fois : elle manque au niveau dès qu'elle est vaporisée.
+    chaudiere.pression += (vapeurCreee - (prise + FUITE_CHAUDIERE * (pression - PRESSION_AMBIANTE)) * dt) / CAPACITE_CHAUDIERE;
+    // La vapeur qu'on ne soutire pas s'enfuit par la soupape : elle a coûté du
+    // charbon et n'a rien fait tourner. C'est toute la conduite sobre du jeu.
+    const plafond = engin.pieces.soupape ? PRESSION_SOUPAPE : PRESSION_MAX;
+    chaudiere.soupapeSiffle = chaudiere.pression > plafond;
+    if (chaudiere.soupapeSiffle) chaudiere.pression = plafond;
+    chaudiere.pression = clamp(chaudiere.pression, PRESSION_AMBIANTE, PRESSION_MAX);
+    // Sans soupape, la tôle travaille : le rendu en fera la scène comique (Q11),
+    // le modèle se contente de dire depuis combien de temps c'est dangereux.
+    chaudiere.danger = !engin.pieces.soupape && chaudiere.pression > PRESSION_SOUPAPE;
+    chaudiere.secondesEnDanger = chaudiere.danger ? chaudiere.secondesEnDanger + dt : 0;
+    return engin;
+  }
+
+  function simuler(engin, monde, { duree = 1, pas = 1 / 120, distanceCible = null } = {}) {
+    let t = 0;
+    while (t < duree) {
+      pasDeTemps(engin, monde, pas);
+      t += pas;
+      if (distanceCible !== null && Math.abs(engin.distance) >= distanceCible) break;
+    }
+    return engin.bilan();
+  }
+
+  const modeleVapeur = {
+    CATALOGUE,
+    PRESSION_MAX,
+    PRESSION_AMBIANTE,
+    AVANCE_NOMINALE,
+    RECOUVREMENT,
+    nouvelEngin,
+    nouveauMonde,
+    penteReelle,
+    pasDeTemps,
+    simuler,
+    coupleMachine,
+    ouvertures,
+    etatCylindre,
+    travailParCourse,
+    appelDair,
+    boucleCircuitFerme,
+  };
+  return modeleVapeur;
+})();
+// ===== MODELE : FIN =====
+  </script>
+</body>
+</html>
