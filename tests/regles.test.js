@@ -187,6 +187,26 @@ test('la jauge de pression monte sous les yeux et marque la zone de la soupape',
   );
 });
 
+// 25
+test('les règles disent avec quelle machine on ouvre le jeu', () => {
+  // La projection ne choisit pas ce qu’elle dessine : elle demande la machine de
+  // départ, et elle la trouve assemblée.
+  const pieces = R.PIECES_DE_BASE;
+  assert.ok(Array.isArray(pieces) && pieces.length === 13, `la machine de départ n’est pas la machine des treize pièces : ${pieces && pieces.length}`);
+  for (const id of ['chaudiere', 'foyer', 'roues', 'cylindre', 'tiroir', 'excentrique']) {
+    assert.ok(pieces.includes(id), `la machine de départ n’a pas de ${id} à dessiner`);
+  }
+
+  // Et surtout : avec ces pièces-là, le chauffeur qui ouvre le feu et le
+  // régulateur, puis donne un coup de barre, part sur le plat.
+  const monde = plaine();
+  const engin = M.nouvelEngin(pieces);
+  engin.commandes.feu = 1;
+  engin.commandes.regulateur = 1;
+  demarrer(engin, monde);
+  assert.equal(R.situation(engin, monde), 'roule', 'à l’ouverture, la machine de départ ne roule pas');
+});
+
 // 24
 test('ni le modèle ni les règles ne savent qu’il y a un écran', () => {
   // La ligne de flottaison (spec, décision 3) : le modèle et les règles rendent
