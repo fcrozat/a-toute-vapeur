@@ -301,6 +301,11 @@ test('l’état du jeu dit où est le vilebrequin et où en est le tiroir', () =
   assert.equal(etat.machine.tours, engin.machine.tours, 'les tours faits ne sont pas ceux de la machine');
   assert.equal(etat.machine.cale, engin.machine.cale, 'l’écran ne sait pas si la machine est calée');
   assert.equal(etat.machine.patine, engin.machine.patine, 'l’écran ne sait pas si les roues patinent');
+  // L’avance à l’admission : c’est elle qui donne la phase de l’excentrique, donc
+  // la façon dont sa tige s’accroche au tiroir.
+  assert.equal(etat.machine.avance, engin.machine.avance, 'l’excentrique ne connaît pas son avance');
+  // Et l’élan de la roue : la barre s’en sert pour ne jamais freiner une machine lancée.
+  assert.equal(etat.machine.elan, Math.abs(engin.machine.vitesseAngulaire), 'la barre ignore à quelle vitesse tourne la roue');
 
   // On laisse la machine faire des tours, telle qu’elle les fait : le tiroir
   // dessiné doit balaier toute sa glace, ouvrir les deux lumières l’une après
@@ -370,6 +375,12 @@ test('la vitesse se dit en chiffres et en mots', () => {
 });
 
 // 17
+test('un coup de barre ne freine jamais la machine', () => {
+  assert.equal(R.elanDeLaBarre(0), 0.4, 'à l’arrêt, la barre rend l’élan d’un homme sur le levier');
+  assert.equal(R.elanDeLaBarre(8), 8, 'lancée à huit, la barre ne la ramène pas à un homme');
+  assert.equal(R.elanDeLaBarre(-3), 3, 'en marche arrière, la barre rend la même chose');
+});
+
 test("chaque état de l'engin a son mot à l'écran", () => {
   // Sept états, sept mots différents : l'élève ne doit pas dépendre d'une couleur
   // pour savoir ce que fait la machine. C'est la promesse qui remplace les tests

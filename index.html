@@ -11,8 +11,40 @@
   -->
 </head>
 <body>
-  <!-- Le monde, la coupe et l'établi arrivent dès que les douze promesses tiennent. -->
-  <p>Modèle physique vérifié par <code>npm test</code>. Rendu à venir.</p>
+  <style>
+    :root { color-scheme: dark; }
+    body { margin: 0; background: #171b21; color: #efe7d8; font: 17px/1.45 system-ui, "Segoe UI", sans-serif; }
+    #atelier { max-width: 1000px; margin: 0 auto; padding: 12px; display: grid; gap: 10px; }
+    #scene { width: 100%; height: auto; aspect-ratio: 16 / 9; background: #0e1216; border-radius: 10px; display: block; }
+    #tableau { display: flex; flex-wrap: wrap; align-items: center; gap: 12px 22px; }
+    #vitesse { margin: 0; display: flex; align-items: baseline; gap: 10px; }
+    #vitesse-chiffres { font-size: 1.9rem; font-variant-numeric: tabular-nums; }
+    #vitesse-mots { color: #f2b53c; text-transform: uppercase; font-size: .85rem; letter-spacing: .09em; }
+    #situation { margin: 0; }
+    #mot-de-situation { border: 1px solid #55636f; border-radius: 999px; padding: 3px 12px; }
+    #pause { color: #f2b53c; }
+    .reglage { display: flex; align-items: center; gap: 10px; }
+    /* La barre du feu est une cible de 48 px : le pouce y trouve sa place. */
+    #feu { width: 240px; height: 48px; accent-color: #e2622b; }
+    #barre { min-height: 48px; min-width: 150px; border-radius: 10px; border: 1px solid #55636f; background: #232a33; color: inherit; font: inherit; }
+    #barre:active { background: #e2622b; color: #171b21; }
+    #aide { margin: 0; color: #9aa7b3; font-size: .85rem; }
+    button:focus-visible, input:focus-visible { outline: 3px solid #f2b53c; outline-offset: 2px; }
+  </style>
+  <main id="atelier">
+    <canvas id="scene" width="960" height="540" role="img"
+            aria-label="La machine à vapeur en coupe, sur son chemin"></canvas>
+    <section id="tableau" aria-label="Indicateurs de la machine">
+      <p id="vitesse"><span id="vitesse-chiffres">0,0 km/h</span> <span id="vitesse-mots">sans élan</span></p>
+      <p id="situation"><span id="mot-de-situation">À l’arrêt</span> <span id="pause" hidden>en pause</span></p>
+      <label class="reglage" for="feu">Feu
+        <input id="feu" type="range" min="0" max="100" step="1" value="80">
+        <output id="feu-dit" for="feu">80 %</output>
+      </label>
+      <button id="barre" type="button">Un coup de barre</button>
+    </section>
+    <p id="aide">Souris, doigt ou flèches sur la barre du feu · Espace&nbsp;: un coup de barre · P&nbsp;: pause</p>
+  </main>
   <script>
 // ===== MODELE : DEBUT =====
 // Le modèle compte, il ne dessine rien. C'est lui qui doit avoir raison.
@@ -635,6 +667,8 @@ const reglesDuJeu = (() => {
   // donc les règles notent la zone à dessiner, et une promesse vérifie qu'elle
   // est bien là où le modèle fait souffler la soupape.
   const ZONE_SOUPAPE = 11;
+  // L’élan qu’un homme met dans la roue en poussant le levier : celui du modèle.
+  const ELAN_DE_LA_BARRE = 0.4;
 
   // Les mots de la vitesse, du lent au rapide (spec : « 5 km/h — bon train »).
   // Ce qu’on garde s’appelle l’élan ; ce qu’on mesure s’appelle la vitesse.
@@ -717,10 +751,18 @@ const reglesDuJeu = (() => {
     };
   }
 
+  // Le coup de barre : la machine repart du point mort, et une machine lancée
+  // garde ce qu’elle a. Le sens reste celui de la marche — `pousser` s’en charge.
+  function elanDeLaBarre(elanDejaLa) {
+    return Math.max(ELAN_DE_LA_BARRE, Math.abs(elanDejaLa));
+  }
+
   function etatDeLaMachine(engin) {
     const machine = engin.machine;
     return {
       angle: machine.angle,
+      avance: machine.avance,
+      elan: Math.abs(machine.vitesseAngulaire),
       tours: machine.tours,
       cale: machine.cale,
       patine: machine.patine,
@@ -770,10 +812,485 @@ const reglesDuJeu = (() => {
     };
   }
 
-  const reglesDuJeu = { situation, etatDuJeu, MOTS_DE_SITUATION, FEU_BAS, ZONE_SOUPAPE, PIECES_DE_BASE };
+  const reglesDuJeu = {
+    situation, etatDuJeu, MOTS_DE_SITUATION, FEU_BAS, ZONE_SOUPAPE, PIECES_DE_BASE,
+    ELAN_DE_LA_BARRE, elanDeLaBarre,
+  };
   return reglesDuJeu;
 })();
 // ===== REGLES : FIN =====
+  </script>
+  <script>
+// ===== PROJECTION : DEBUT =====
+// Tout ce qui sait qu'un navigateur existe est là. Elle lit le monde par une
+// seule porte — `etatDuJeu` — et n'y écrit que par les commandes du modèle
+// (spec, décision 3). Les tailles, les couleurs, les particules : du dessin.
+(() => {
+  const M = modeleVapeur;
+  const R = reglesDuJeu;
+
+  const toile = document.getElementById('scene');
+  const crayon = toile.getContext('2d');
+  const vues = {
+    chiffres: document.getElementById('vitesse-chiffres'),
+    allure: document.getElementById('vitesse-mots'),
+    situation: document.getElementById('mot-de-situation'),
+    pause: document.getElementById('pause'),
+    feu: document.getElementById('feu'),
+    feuDit: document.getElementById('feu-dit'),
+    barre: document.getElementById('barre'),
+  };
+
+  // --- Le départ : la machine des treize pièces, chauffée, sur le plat ---
+  const monde = M.nouveauMonde({ pente: 0, bosses: [] });
+  const engin = M.nouvelEngin(R.PIECES_DE_BASE);
+  engin.commandes.regulateur = 1;   // la vapeur est ouverte ; le levier aura son billet
+  let feuDemande = 0.8;
+  engin.commandes.feu = feuDemande;
+
+  // On ouvre le rideau sur une chaudière chaude : sans ça, il faudrait une
+  // minute de feu avant que l'écran montre quoi que ce soit.
+  M.simuler(engin, monde, { duree: 40 });
+  engin.pousser();
+
+  // --- L'horloge ---
+  // Le pas de temps appartient au modèle (`simuler` connaît le sien). L'image, la
+  // plafonne : une seconde perdue ne se rattrape jamais d'un coup (spec, décision 8).
+  const PAS_MAX_PAR_IMAGE = 1 / 20;
+  let enPause = false;
+  let instantPrecedent = null;
+
+  // --- Le dessin ---
+  const ECHELLE = 90;      // pixels par mètre
+  const ANCRE = 0.36;      // l'engin tient le tiers gauche de l'écran
+  const SOL = 0.8;         // la rail sous la roue motrice
+  const CHARS = {
+    fer: '#6b7683', ferClair: '#96a3b0', cuivre: '#c98b4b', braise: '#e2622b',
+    vapeur: '#dfe7ee', goudron: '#2a3038', rail: '#8c7a55',
+  };
+  const D = {
+    roues: [{ x: 0, r: 0.6 }, { x: -1.6, r: 0.35 }],
+    manivelle: 0.22,
+    bielle: 0.9,
+    glissiere: { x0: 0.45, x1: 1.25 },
+    cylindre: { x0: 1.2, x1: 1.95, demi: 0.22 },
+    tige: 0.62,          // de la crosse au piston : une longueur de dessin
+    glace: { x: 1.45, y: 0.95, demi: 0.3 },
+    chaudiere: { x0: -1.6, x1: 1.15, y: 1.5, rayon: 0.45 },
+    boiteFumee: { x0: 0.7, x1: 1.15 },
+    cheminee: { x: 0.92, y0: 1.95, y1: 2.5, demi: 0.09 },
+    soupape: { x: -0.3, y: 1.98 },
+    foyer: { x0: -1.75, x1: -1.0, y0: 0.78, y1: 1.42 },
+  };
+  const AXE = { x: 0, y: 0.6 };   // le vilebrequin est sur l'essieu motrice, à hauteur de roue
+
+  let large = 960;
+  let haut = 540;
+  function dimensionner() {
+    const dpr = window.devicePixelRatio || 1;
+    large = toile.clientWidth || 960;
+    haut = Math.round(large * 9 / 16);
+    toile.width = Math.round(large * dpr);
+    toile.height = Math.round(haut * dpr);
+    crayon.setTransform(dpr, 0, 0, dpr, 0, 0);
+  }
+  dimensionner();
+  window.addEventListener('resize', dimensionner);
+
+  const solY = () => haut * SOL;
+  const ancreX = () => large * ANCRE;
+
+  // Le repère de l'engin incline la machine avec le chemin.
+  const inclinaison = (etat) => -Math.atan(etat.sol.pente);
+  function pointDeEngin(x, y, etat) {
+    const t = inclinaison(etat);
+    const c = Math.cos(t);
+    const s = Math.sin(t);
+    return {
+      x: ancreX() + ECHELLE * (x * c + y * s),
+      y: solY() + ECHELLE * (x * s - y * c),
+    };
+  }
+
+  // --- La fumée : des particules d'écran, nourries par l'état du jeu ---
+  const fumee = [];
+  let compteurDeFumee = 0;
+  function avaleLaFumee(etat, dt) {
+    if (dt > 0) {
+      const sortie = pointDeEngin(D.cheminee.x, D.cheminee.y1, etat);
+      compteurDeFumee += etat.fumee.densite * dt * 26;
+      while (compteurDeFumee >= 1 && fumee.length < 160) {
+        compteurDeFumee -= 1;
+        fumee.push({
+          x: sortie.x, y: sortie.y, r: 4 + Math.random() * 5,
+          vx: -18 - Math.random() * 22, vy: -34 - Math.random() * 26,
+          age: 0, vie: 1.6 + Math.random() * 1.4, dense: etat.fumee.densite,
+        });
+      }
+      // La vapeur qui sifflait par la soupape fait le même chemin, en plus bas.
+      if (etat.jauge.souffle && Math.random() < dt * 30 && fumee.length < 200) {
+        const sifflet = pointDeEngin(D.soupape.x, D.soupape.y + 0.14, etat);
+        fumee.push({
+          x: sifflet.x, y: sifflet.y, r: 3, vx: -30, vy: -60,
+          age: 0, vie: 0.5, dense: 0.35, vapeur: true,
+        });
+      }
+      const derive = (etat.vitesse.kmh / 3.6) * ECHELLE;   // l'air file vers la gauche
+      for (const p of fumee) {
+        p.age += dt;
+        p.x += (p.vx - derive) * dt;
+        p.y += p.vy * dt;
+        p.vy += 6 * dt;
+        p.r += 11 * dt;
+      }
+      for (let i = fumee.length - 1; i >= 0; i -= 1) if (fumee[i].age > fumee[i].vie) fumee.splice(i, 1);
+    }
+    for (const p of fumee) {
+      const vie = 1 - p.age / p.vie;
+      crayon.fillStyle = p.vapeur
+        ? `rgba(230, 240, 248, ${0.5 * vie})`
+        : `rgba(38, 38, 42, ${0.55 * p.dense * vie})`;
+      crayon.beginPath();
+      crayon.arc(p.x, p.y, p.r, 0, 2 * Math.PI);
+      crayon.fill();
+    }
+  }
+
+  // --- Le chemin ---
+  // L’altitude du terrain entre deux abscisses : le dessin additionne les pentes
+  // qu’on lui donne, il ne décide rien du terrain.
+  function denivelle(sol, x0, x1) {
+    const pas = 0.05;
+    const sens = x1 >= x0 ? 1 : -1;
+    let h = 0;
+    for (let x = x0; sens > 0 ? x < x1 : x > x1; x += sens * pas) h += sol.penteEn(x) * pas * sens;
+    return h;
+  }
+
+  function dessineLeSol(etat) {
+    const sol = etat.sol;
+    const pas = 6;
+    const abscisses = [];
+    const hauteurs = [];
+    // à gauche de l’engin, le profil se lit à l’envers
+    let h = solY();
+    for (let px = ancreX(); px >= -pas; px -= pas) {
+      abscisses.unshift(px);
+      hauteurs.unshift(h);
+      h += sol.penteEn(sol.distance + (px - pas - ancreX()) / ECHELLE) * pas;
+    }
+    // à droite
+    h = solY();
+    for (let px = ancreX() + pas; px <= large + pas; px += pas) {
+      h -= sol.penteEn(sol.distance + (px - ancreX()) / ECHELLE) * pas;
+      abscisses.push(px);
+      hauteurs.push(h);
+    }
+
+    crayon.beginPath();
+    crayon.moveTo(abscisses[0], hauteurs[0]);
+    for (let i = 1; i < abscisses.length; i += 1) crayon.lineTo(abscisses[i], hauteurs[i]);
+    crayon.lineTo(large + pas, haut + 10);
+    crayon.lineTo(-pas, haut + 10);
+    crayon.closePath();
+    crayon.fillStyle = '#3a3f2e';
+    crayon.fill();
+
+    // le rail
+    crayon.strokeStyle = CHARS.rail;
+    crayon.lineWidth = 3;
+    crayon.beginPath();
+    crayon.moveTo(abscisses[0], hauteurs[0] - 3);
+    for (let i = 1; i < abscisses.length; i += 1) crayon.lineTo(abscisses[i], hauteurs[i] - 3);
+    crayon.stroke();
+
+    // les traverses, tous les 0,6 m de chemin : ce sont elles qui donnent la vitesse
+    crayon.strokeStyle = '#5b4a33';
+    crayon.lineWidth = 4;
+    const E_CART = 0.6;
+    const gauche = sol.distance - ancreX() / ECHELLE;
+    const droite = sol.distance + (large - ancreX()) / ECHELLE;
+    for (let x = Math.floor(gauche / E_CART) * E_CART; x < droite; x += E_CART) {
+      const px = ancreX() + (x - sol.distance) * ECHELLE;
+      const ty = solY() - denivelle(sol, sol.distance, x) * ECHELLE;
+      crayon.beginPath();
+      crayon.moveTo(px, ty - 2);
+      crayon.lineTo(px, ty + 7);
+      crayon.stroke();
+    }
+  }
+
+  // --- L'engin ---
+  function dessineLengin(etat) {
+    const p = etat.pieces;
+    const a = -etat.machine.angle;   // une roue qui avance tourne vers la droite de l'écran
+    crayon.save();
+    crayon.translate(ancreX(), solY());
+    crayon.rotate(inclinaison(etat));
+    crayon.scale(ECHELLE, -ECHELLE);   // 1 = un mètre, et y vers le haut
+    crayon.lineJoin = 'round';
+
+    // les roues d’abord : tout le reste se monte dessus
+    if (p.roues) {
+      // chaque roue pose son bandeau sur le rail, petite ou grande
+      for (const r of D.roues) {
+        cercle(r.x, r.r, r.r, CHARS.goudron, CHARS.fer, 0.05);
+        for (let k = 0; k < 8; k += 1) {
+          const angle = a + (k * Math.PI) / 4;
+          trait(r.x, r.r, r.x + (r.r - 0.07) * Math.cos(angle), r.r + (r.r - 0.07) * Math.sin(angle), CHARS.fer, 0.045);
+        }
+        cercle(r.x, r.r, 0.1, CHARS.ferClair, CHARS.fer, 0.03);
+      }
+    }
+
+    // le châssis
+    rect(-1.8, 0.6, 3.1, 0.12, CHARS.goudron);
+
+    if (p.foyer) {
+      rect(D.foyer.x0, D.foyer.y0, D.foyer.x1 - D.foyer.x0, D.foyer.y1 - D.foyer.y0, CHARS.fer);
+      // le feu du chauffeur, tel qu'il l'a réglé
+      const braise = etat.fumee.densite;
+      rect(D.foyer.x0 + 0.06, D.foyer.y0 + 0.05, D.foyer.x1 - D.foyer.x0 - 0.12, 0.18 + 0.12 * braise, `rgba(226, 98, 43, ${0.25 + 0.7 * braise})`);
+    }
+    if (p.soute) rect(-2.15, 1.0, 0.4, 0.5, CHARS.goudron);
+    if (p.chaudiere) {
+      rect(D.chaudiere.x0, D.chaudiere.y - D.chaudiere.rayon, D.chaudiere.x1 - D.chaudiere.x0, 2 * D.chaudiere.rayon, CHARS.fer);
+      rect(D.chaudiere.x0, D.chaudiere.y - 0.06, D.chaudiere.x1 - D.chaudiere.x0, 0.12, CHARS.ferClair);
+      // le dôme du régulateur, la citerne d'eau, la soupape
+      if (p.regulateur) disque(-0.7, D.chaudiere.y + D.chaudiere.rayon, 0.16, CHARS.ferClair);
+      if (p.citerne) {
+        rect(-1.52, D.chaudiere.y + D.chaudiere.rayon, 0.6, 0.26, '#4a6572');
+        rect(-1.52, D.chaudiere.y + D.chaudiere.rayon + 0.14, 0.6, 0.12, '#6d93a6');
+      }
+      if (p.soupape) rect(D.soupape.x - 0.07, D.chaudiere.y + D.chaudiere.rayon, 0.14, 0.2, CHARS.cuivre);
+    }
+    if (p.boite_a_fumee) rect(D.boiteFumee.x0, D.chaudiere.y - 0.5, D.boiteFumee.x1 - D.boiteFumee.x0, 1.0, '#59636f');
+    rect(D.cheminee.x - D.cheminee.demi, D.cheminee.y0, 2 * D.cheminee.demi, D.cheminee.y1 - D.cheminee.y0, CHARS.ferClair);
+    rect(D.cheminee.x - 0.14, D.cheminee.y1, 0.28, 0.07, CHARS.ferClair);
+
+    // le cylindre, ouvert en deux pour voir la vapeur
+    if (p.cylindre) {
+      const c = D.cylindre;
+      const axe = AXE.y;
+      rect(c.x0, axe - c.demi, c.x1 - c.x0, 2 * c.demi, '#4c5563');
+      const piston = positionDuPiston(etat);
+      rect(piston - 0.05, axe - c.demi + 0.03, 0.1, 2 * c.demi - 0.06, CHARS.cuivre);
+      // les deux chambres : la lumière qui les alimente les colore
+      const avant = etat.distribution.lumiere.avant;
+      const arriere = etat.distribution.lumiere.arriere;
+      rect(piston + 0.05, axe - c.demi + 0.03, c.x1 - piston - 0.08, 2 * c.demi - 0.06, `rgba(223, 231, 238, ${0.15 + 0.5 * avant})`);
+      rect(c.x0 + 0.03, axe - c.demi + 0.03, piston - 0.08 - c.x0, 2 * c.demi - 0.06, `rgba(223, 231, 238, ${0.15 + 0.5 * arriere})`);
+      if (etat.distribution.echappement.avant || etat.distribution.echappement.arriere) {
+        // l'échappement pousse dans la boîte à fumée
+        rect(D.boiteFumee.x0 + 0.05, D.chaudiere.y - 0.1, 0.35, 0.2, 'rgba(223, 231, 238, 0.35)');
+      }
+    }
+
+    // la glace du tiroir et le tiroir lui-même
+    if (p.tiroir) {
+      const g = D.glace;
+      rect(g.x - g.demi, g.y - 0.05, 2 * g.demi, 0.1, '#3f4753');
+      const place = g.x + etat.distribution.tiroir * 0.16;
+      rect(place - 0.09, g.y - 0.11, 0.18, 0.22, CHARS.cuivre);
+      // les deux lumières d'admission, ouvertes ou couvertes
+      lumiere(place - 0.2, etat.distribution.lumiere.arriere);
+      lumiere(place + 0.2, etat.distribution.lumiere.avant);
+      if (p.excentrique) {
+        // la tige de l'excentrique : sa projection donne exactement la place du tiroir
+        const phase = Math.PI / 2 - (etat.machine.angle + etat.machine.avance);
+        const ex = AXE.x + 0.17 * Math.cos(phase);
+        const ey = AXE.y + 0.17 * Math.sin(phase);
+        trait(ex, ey, place, g.y, CHARS.ferClair, 0.035);
+        disque(ex, ey, 0.06, CHARS.cuivre);
+      }
+    }
+
+    // la glissière, la crosse, la bielle, la manivelle
+    if (p.crosse) {
+      const g = D.glissiere;
+      rect(g.x0, AXE.y - 0.11, g.x1 - g.x0, 0.03, '#3f4753');
+      const crosse = positionDuPiston(etat) - 0.12;
+      rect(crosse - 0.07, AXE.y - 0.07, 0.14, 0.14, CHARS.ferClair);
+      trait(crosse, AXE.y, positionDuPiston(etat), AXE.y, CHARS.ferClair, 0.03);   // la tige du piston
+    }
+    const vilebrequin = {
+      x: AXE.x + D.manivelle * Math.cos(a),
+      y: AXE.y + D.manivelle * Math.sin(a),
+    };
+    if (p.bielle) trait(vilebrequin.x, vilebrequin.y, positionDuPiston(etat) - 0.12, AXE.y, CHARS.ferClair, 0.05);
+    disque(AXE.x, AXE.y, 0.09, CHARS.ferClair);
+    trait(AXE.x, AXE.y, vilebrequin.x, vilebrequin.y, CHARS.cuivre, 0.06);
+
+    crayon.restore();
+  }
+
+  // La crosse suit la manivelle, corde au pied de la bielle : de la géométrie,
+  // pas de la physique. Le piston est au bout de la tige, dans le cylindre.
+  function positionDeLaCrosse(etat) {
+    const a = -etat.machine.angle;
+    const r = D.manivelle;
+    const L = D.bielle;
+    const deltaY = r * Math.sin(a);
+    return AXE.x + r * Math.cos(a) + Math.sqrt(Math.max(0, L * L - deltaY * deltaY));
+  }
+
+  function positionDuPiston(etat) {
+    return positionDeLaCrosse(etat) + D.tige;
+  }
+
+  function lumiere(x, ouverture) {
+    rect(x - 0.035, D.glace.y - 0.05, 0.07, 0.1, `rgba(226, 98, 43, ${0.15 + 0.8 * ouverture})`);
+  }
+
+  function rect(x, y, w, h, couleur) {
+    crayon.fillStyle = couleur;
+    crayon.fillRect(x, y, Math.max(0, w), Math.max(0, h));
+  }
+  function disque(x, y, r, couleur) {
+    crayon.fillStyle = couleur;
+    crayon.beginPath();
+    crayon.arc(x, y, r, 0, 2 * Math.PI);
+    crayon.fill();
+  }
+  function cercle(x, y, r, couleur, bord, largeur) {
+    crayon.beginPath();
+    crayon.arc(x, y, r, 0, 2 * Math.PI);
+    crayon.fillStyle = couleur;
+    crayon.fill();
+    crayon.strokeStyle = bord;
+    crayon.lineWidth = largeur;
+    crayon.stroke();
+  }
+  function trait(x0, y0, x1, y1, couleur, largeur) {
+    crayon.strokeStyle = couleur;
+    crayon.lineWidth = largeur;
+    crayon.beginPath();
+    crayon.moveTo(x0, y0);
+    crayon.lineTo(x1, y1);
+    crayon.stroke();
+  }
+
+  // --- Le manomètre, en haut à droite : la jauge et sa zone de soupape ---
+  function dessineLaJauge(etat) {
+    const j = etat.jauge;
+    const r = Math.min(large, haut) * 0.13;
+    const cx = large - r - 22;
+    const cy = r + 22;
+    const debut = Math.PI * 0.75;
+    const tour = Math.PI * 1.5;
+    const angleDe = (pression) => debut + tour * ((pression - j.ambiante) / (j.fond - j.ambiante));
+
+    crayon.fillStyle = '#10161c';
+    crayon.beginPath();
+    crayon.arc(cx, cy, r, 0, 2 * Math.PI);
+    crayon.fill();
+    crayon.strokeStyle = CHARS.fer;
+    crayon.lineWidth = 3;
+    crayon.stroke();
+
+    // la zone où la vapeur s'en va : marquée en rouge, pour qu'on la voie venir
+    crayon.strokeStyle = CHARS.ferClair;
+    crayon.lineWidth = 3;
+    crayon.beginPath();
+    crayon.arc(cx, cy, r - 8, angleDe(j.ambiante), angleDe(j.soupape));
+    crayon.stroke();
+    crayon.strokeStyle = CHARS.braise;
+    crayon.lineWidth = 12;
+    crayon.beginPath();
+    crayon.arc(cx, cy, r - 8, angleDe(j.soupape), angleDe(j.fond));
+    crayon.stroke();
+    const milieuDeZone = angleDe((j.soupape + j.fond) / 2);
+    crayon.fillStyle = CHARS.braise;
+    crayon.font = `${Math.round(r * 0.2)}px system-ui, sans-serif`;
+    crayon.textAlign = 'center';
+    crayon.fillText('soupape', cx + r * 0.52 * Math.cos(milieuDeZone), cy + r * 0.52 * Math.sin(milieuDeZone));
+
+    for (let pression = Math.ceil(j.ambiante); pression <= j.fond; pression += 2) {
+      const ang = angleDe(pression);
+      crayon.strokeStyle = CHARS.ferClair;
+      crayon.lineWidth = 2;
+      crayon.beginPath();
+      crayon.moveTo(cx + (r - 14) * Math.cos(ang), cy + (r - 14) * Math.sin(ang));
+      crayon.lineTo(cx + (r - 4) * Math.cos(ang), cy + (r - 4) * Math.sin(ang));
+      crayon.stroke();
+    }
+
+    const aiguille = angleDe(Math.min(j.fond, Math.max(j.ambiante, j.pression)));
+    crayon.strokeStyle = j.souffle ? CHARS.braise : '#efe7d8';
+    crayon.lineWidth = 3;
+    crayon.beginPath();
+    crayon.moveTo(cx, cy);
+    crayon.lineTo(cx + (r - 12) * Math.cos(aiguille), cy + (r - 12) * Math.sin(aiguille));
+    crayon.stroke();
+
+    crayon.fillStyle = '#efe7d8';
+    crayon.font = `${Math.round(r * 0.36)}px system-ui, sans-serif`;
+    crayon.textAlign = 'center';
+    crayon.fillText(`${j.pression.toFixed(1)} bar`, cx, cy + r * 0.62);
+    crayon.font = `${Math.round(r * 0.24)}px system-ui, sans-serif`;
+    crayon.fillStyle = j.souffle ? CHARS.braise : CHARS.ferClair;
+    crayon.fillText(j.souffle ? 'la soupape souffle' : 'pression', cx, cy + r * 0.86);
+  }
+
+  // --- Les mots de l'écran ---
+  function ecrire(el, texte) {
+    if (el.textContent !== texte) el.textContent = texte;
+  }
+  function metsALjour(etat) {
+    ecrire(vues.chiffres, etat.vitesse.chiffres);
+    ecrire(vues.allure, etat.vitesse.mots);
+    ecrire(vues.situation, etat.mot);
+    ecrire(vues.feuDit, `${Math.round(feuDemande * 100)} %`);
+  }
+
+  // --- Les gestes ---
+  function reglerLeFeu(pourCent) {
+    feuDemande = Math.min(1, Math.max(0, pourCent / 100));
+    engin.commandes.feu = feuDemande;   // la seule écriture permise : une commande
+  }
+  function coupDeBarre() {
+    // Le geste rend l'élan que disent les règles : de quoi repartir du point mort,
+    // jamais de quoi freiner une machine lancée.
+    engin.pousser(R.elanDeLaBarre(R.etatDuJeu(engin, monde).machine.elan));
+  }
+  function basculerPause() {
+    enPause = !enPause;
+    vues.pause.hidden = !enPause;
+  }
+
+  vues.feu.addEventListener('input', () => reglerLeFeu(Number(vues.feu.value)));
+  vues.barre.addEventListener('click', coupDeBarre);
+  window.addEventListener('keydown', (e) => {
+    if (e.repeat) return;   // un geste = une poussée
+    const cible = e.target;
+    const dansUnBouton = cible && cible.tagName === 'BUTTON';
+    if (e.code === 'Space' || e.key === ' ' || e.key === 'Spacebar') {
+      if (dansUnBouton) return;   // le bouton pousse déjà
+      e.preventDefault();
+      coupDeBarre();
+    } else if (e.key === 'p' || e.key === 'P') {
+      e.preventDefault();
+      basculerPause();
+    }
+  });
+
+  // --- La boucle ---
+  function image(instant) {
+    const ecoule = instantPrecedent === null ? 0 : Math.min((instant - instantPrecedent) / 1000, PAS_MAX_PAR_IMAGE);
+    instantPrecedent = instant;
+    if (!enPause && ecoule > 0) M.simuler(engin, monde, { duree: ecoule });
+    const etat = R.etatDuJeu(engin, monde);
+    crayon.clearRect(0, 0, large, haut);
+    dessineLeSol(etat);
+    dessineLengin(etat);
+    avaleLaFumee(etat, enPause ? 0 : ecoule);
+    dessineLaJauge(etat);
+    metsALjour(etat);
+    window.requestAnimationFrame(image);
+  }
+  window.requestAnimationFrame(image);
+})();
+// ===== PROJECTION : FIN =====
   </script>
 </body>
 </html>
