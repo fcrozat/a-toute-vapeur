@@ -13,7 +13,7 @@ Le montage complet bricolé par le joueur, machine à vapeur comprise : la voitu
 _Avoid_ : véhicule, montage, construction
 
 **Pièce**:
-Une brique qu'on branche à un engin : chaudière, cylindre, volant, roue à eau, soute. Elle se relie aux autres par un tuyau ou par un arbre, jamais par les deux à la fois.
+Une brique qu'on branche à un engin : chaudière, cylindre, roue à eau, soute, soupape. Elle se relie aux autres par un tuyau ou par un arbre, jamais par les deux à la fois.
 _Avoid_ : élément, composant, accessoire, objet
 
 **Machine**:
@@ -39,7 +39,7 @@ _Avoid_ : score, performance, efficacité
 ### La machine à vapeur
 
 **Machine à vapeur**:
-L'engin qui convertit la chaleur en mouvement — chaudière, cylindre, piston, tiroir de distribution, volant. Elle ne se confond pas avec le moteur qui équipe un véhicule.
+L'engin qui convertit la chaleur en mouvement — chaudière, cylindre, piston, tiroir de distribution, roues. Elle ne se confond pas avec le moteur qui équipe un véhicule.
 _Avoid_ : moteur à vapeur (pour désigner la machine seule), turbine
 
 **Double effet**:
@@ -71,7 +71,7 @@ Le léger décalage qui fait ouvrir la lumière un peu avant que le piston arriv
 _Avoid_ : lead, temps d'avance
 
 **Recouvrement**:
-La largeur de glace qui ferme encore la lumière quand le tiroir est au milieu de sa course. Elle commande la longueur de la détente.
+La largeur de glace qui ferme encore la lumière quand le tiroir est au milieu de sa course. Elle commande la longueur de la détente, et donc la dureté du ressort au point mort : un tiroir qui recouvre trop garde la machine sur place.
 _Avoid_ : lap
 
 **Excentrique**:
@@ -83,19 +83,19 @@ Faire passer la machine de marche avant à marche arrière, en décalant la dist
 _Avoid_ : inverseur, marche arrière (pour désigner le geste), reverseur, quadrant (non attesté en français)
 
 **Point mort**:
-Position de la manivelle dans le prolongement de l'axe du cylindre, où le piston ne peut plus la pousser. Une machine sans volant ni avance peut y rester.
+Position de la manivelle dans le prolongement de l'axe du cylindre, où le piston ne peut plus la pousser. Une machine sans avance peut y rester, et n'en sort que poussée ou lancée.
 _Avoid_ : fonds de course, point mort haut/bas (une machine horizontale a un point mort d'avant et un point mort d'arrière)
 
-**Volant**:
-La masse qui emmagasine le mouvement et fait franchir les points morts ; elle régularise une machine saccadée. Chaque volant ajouté pèse sur la route et sur la pente.
-_Avoid_ : roue d'inertie, volant moteur
+**Élan**:
+Ce que l'engin emporte avec lui quand il roule, et qui lui fait franchir les points morts et passer les bosses. Ce n'est pas une pièce : c'est la masse de la machine tout entière en mouvement. On le prend sur le plat, on ne l'achète pas au garage.
+_Avoid_ : vitesse (l'élan se garde, la vitesse se mesure), inertie (au garage on ne « donne » pas de l'inertie), volant (le jeu n'a pas de volant à brancher : la machine roule sur ses roues)
 
 **Compression**:
 Ce que le piston fait à la vapeur refermée dans le cylindre. La vapeur comprimée rend la main et repousse le piston : c'est un ressort, et c'est lui, plus que le frottement, qui retient la machine à ses points morts.
 _Avoid_ : pression (qui se mesure, qui n'est pas une phase), tampon
 
 **Caler**:
-S'arrêter de faire de tours, pris à un point mort. Une machine calée ne repart pas seule : il faut la pousser, ou lui donner de l'inertie avant.
+S'arrêter de faire de tours, pris à un point mort. Une machine calée ne repart pas seule : il faut la pousser, ou l'avoir lancée avant d'entrer dans la cote.
 _Avoid_ : bloquer, s'éteindre (une machine à vapeur ne s'éteint pas), calage
 
 **Patinage**:
@@ -107,7 +107,7 @@ Se dit de la soupape qui laisse partir la vapeur qu'on ne soutire pas. Un foyer 
 _Avoid_ : siffler (le siffler est le bruit, pas le geste), purger
 
 **Bosse**:
-Remontée courte et raide du chemin, où la machine doit avoir de l'élan avant d'entrer. Une pente de fond se monte à peu près n'importe comment ; une bosse se paie en inertie.
+Remontée courte et raide du chemin, où la machine doit avoir de l'élan avant d'entrer. Une pente de fond se monte à peu près n'importe comment ; une bosse se paie en élan perdu et en temps.
 _Avoid_ : côte (la côte désigne la pente continue), rampe, relief
 
 **Crosse**:
@@ -133,7 +133,7 @@ L'énergie que doit une chose à la hauteur où elle se trouve — celle de l'ea
 _Avoid_ : énergie potentielle, énergie de position
 
 **Énergie cinétique**:
-L'énergie du mouvement. Le volant en stocke, l'engin en roule.
+L'énergie du mouvement. C'est elle qui fait l'élan de l'engin : plus la machine est lourde et vite, plus elle passe de points morts.
 _Avoid_ : vitesse (qui se mesure, qui ne se stocke pas)
 
 **Point de vue**:

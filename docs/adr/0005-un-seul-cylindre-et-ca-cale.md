@@ -1,6 +1,6 @@
 # Un seul cylindre, et ça cale
 
-La machine du jeu est monocylindre à double effet, et elle cale à ses points morts comme une machine réelle. Le dosage fin n'est pas dans les mains du joueur : il est dans les pièces qu'il branche. Une machine mal montée cale mollement ; le volant donne l'inertie de passage, l'excentrique donne l'avance à l'admission, un second cylindre achète la régularité. Le joueur n'a jamais de réflexe à avoir, mais il subit le problème puis le résout en assemblant.
+La machine du jeu est monocylindre à double effet, et elle cale à ses points morts comme une machine réelle. Le dosage fin n'est pas dans les mains du joueur : il est dans les pièces qu'il branche. Une machine mal montée cale mollement ; l'excentrique donne l'avance à l'admission — c'est lui qui la sort du point mort — et un second cylindre achète la régularité. Le joueur n'a jamais de réflexe à avoir, mais il subit le problème puis le résout en assemblant.
 
 ## Considered Options
 

@@ -6,9 +6,13 @@
 //
 // Deux mots de vocabulaire pour lire ce fichier :
 //  - « cale » : la machine ne fait plus de tours, elle est prise à un point mort ;
-//  - « recouvrement » : la largeur du tiroir sur ses lumières. Plus elle est
-//    grande, plus la vapeur est comprimée avant de rouvrir — plus le point mort
-//    est dur à franchir, et plus l'inertie du volant vaut son pesant.
+//  - « élan » : ce que la machine emporte avec elle. Il n'y a pas de pièce à
+//    acheter pour ça — la masse roulante de l'engin EST son volant. On le
+//    reprend à la promesse 4.
+//
+// Un mot sur la « poussée » : engin.pousser(elan) est le coup de barre du
+// chauffeur. À l'arrêt, une machine bien réglée ne part pas toute seule si le
+// vilebrequin est au point mort ; deux hommes sur un levier, et elle part.
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
@@ -26,9 +30,8 @@ const MACHINE = [
   'regulateur', 'crosse', 'bielle', 'roues', 'boite_a_fumee', 'soupape',
 ];
 
-function machineVapeur({ volant = 0, pieces = [], feu = 1, regulateur = 1, recouvrement = null } = {}) {
+function machineVapeur({ pieces = [], feu = 1, regulateur = 1, recouvrement = null } = {}) {
   const engin = M.nouvelEngin([...MACHINE, ...pieces]);
-  for (let i = 0; i < volant; i++) engin.brancher('volant');
   engin.soute = 4000;   // on teste la physique, pas la faim du foyer
   engin.citerne = 4000;
   engin.commandes.feu = feu;
@@ -47,18 +50,29 @@ function rouler(engin, monde, { duree, distanceCible = null } = {}) {
   return engin.bilan();
 }
 
-// On monte en pression la machine à l'arrêt, puis on lui donne le coup de barre.
-// L'ordre compte : aucune machine ne démarre sans élan, c'est déjà une leçon.
-function demarrer(engin, monde, { chauffe = CHAUFFE, suite = 40 } = {}) {
+// La chauffe, puis le coup de barre, la machine restant dans le meme monde.
+// L'ordre compte : aucune machine ne demarre sans élan, c'est deja une lecon.
+function demarrer(engin, monde, { chauffe = CHAUFFE, elan = 0.4, suite = 40 } = {}) {
   rouler(engin, monde, { duree: chauffe });
   assert.ok(engin.chaudiere.pression > 4, `la chaudière n'a pas monté en pression pendant la chauffe (${engin.chaudiere.pression.toFixed(1)})`);
-  engin.pousser();
+  engin.pousser(elan);
   rouler(engin, monde, { duree: suite });
   return engin;
 }
 
 const plaine = (regles = {}) => M.nouveauMonde(regles);
 const course = (opts, regles) => demarrer(machineVapeur(opts), plaine(regles));
+
+// Première partie à plat, pour emporter de la vitesse ; puis le monde demande,
+// avec sa côte. C'est ainsi qu'on aborde une bosse : on la prend de l'élan.
+function lancee(opts, regles = {}, { avant = 70, apres = 120 } = {}) {
+  const engin = machineVapeur(opts);
+  rouler(engin, plaine(), { duree: CHAUFFE });
+  engin.pousser();
+  rouler(engin, plaine(), { duree: avant });   // on fait la vitesse sur le plat
+  rouler(engin, plaine(regles), { duree: apres });
+  return engin;
+}
 
 // 1
 test('un foyer qui chauffe monte la pression de la chaudière', () => {
@@ -91,29 +105,49 @@ test('une chaudière sans eau ne fait plus de vapeur', () => {
 });
 
 // 3
-test('sous une charge forte, une machine sans volant cale à son point mort', () => {
-  const engin = course({}, { pente: 0.2 });
-  assert.equal(engin.machine.cale, true, 'sans volant, la machine aurait dû rester prise au point mort dans cette côte');
-  assert.ok(Math.abs(engin.machine.vitesseAngulaire) < 0.15, 'une machine calée ne fait plus de tours');
+test('dans une côte raide, la machine reste prise à son point mort', () => {
+  // Trois tonnes et demie sur une rampe de 15 % : a l'arret le couple ne suffit
+  // plus, et la vapeur renfermée retient le piston. La machine ne repart pas du
+  // premier coup de feu — elle est prise, comme sur route.
+  const engin = course({}, { pente: 0.15 });
+  assert.ok(Math.abs(engin.distance) < 1, `la machine a bouge de ${engin.distance.toFixed(1)} m dans cette cote ou elle devait rester`);
+  assert.equal(engin.machine.cale, true, 'la machine aurait du rester prise au point mort dans cette cote');
 });
 
 // 4
-test('un volant fait franchir les points morts à la même machine', () => {
-  const engin = course({ volant: 1 }, { pente: 0.2 });
-  assert.equal(engin.machine.cale, false, 'le volant aurait dû suffire à passer les points morts');
-  assert.ok(engin.machine.tours > 20, `la machine n'a fait que ${engin.machine.tours.toFixed(1)} tours`);
+test("une côte se prend de l'élan", () => {
+  // La meme rampe, la meme machine : mais abordée avec de la vitesse. Ce qui
+  // passe les points morts et monte la cote, ce n'est pas une piece qu'on achete
+  // a l'atelier, c'est la masse de l'engin tout entier emportee a 5 km/h.
+  assert.equal('volant' in M.CATALOGUE, false, 'le catalogue vend encore un volant : la machine ne doit pas son élan a une piece');
+
+  const grimpeuse = lancee({}, { pente: 0.15 });
+  assert.ok(grimpeuse.distance > 100, `abordée lancée, la machine n'a fait que ${grimpeuse.distance.toFixed(0)} m de la meme cote`);
+  assert.equal(grimpeuse.machine.cale, false, 'lancée, la machine aurait du passer les points morts de cette cote');
+
+  // La cote ne se paie pas en volants, elle se paie en temps : a lancement
+  // egal, la rampe rend moins de route que le plat.
+  const roulee = lancee({}, {}).distance;
+  assert.ok(
+    grimpeuse.distance < roulee,
+    `la cote ne coute rien : ${grimpeuse.distance.toFixed(0)} m contre ${roulee.toFixed(0)} m a plat`
+  );
 });
 
 // 5
 test("sans avance à l'admission, la machine retombe à son point mort", () => {
-  // L'excentrique est là : mais calé droit, il ne rouvre la vapeur qu'une fois le
-  // piston lancé. Un élan ne suffit plus, et la vapeur scellée retient la machine.
-  const sansAvance = machineVapeur({ volant: 1 });
-  sansAvance.machine.avance = 0;
-  demarrer(sansAvance, plaine());
-  assert.equal(sansAvance.machine.cale, true, "sans avance, la machine aurait dû rester prise au point mort malgré l'élan");
+  // L'excentrique est la pièce qui donne l'avance : calé droit, ou absent, il ne
+  // rouvre la vapeur qu'une fois le piston lancé. Un élan ne suffit plus, et la
+  // vapeur scellée retient la machine. C'est une piece du garage, pas un reglage.
+  const sansExcentrique = M.nouvelEngin(MACHINE.filter((id) => id !== 'excentrique'));
+  sansExcentrique.soute = 4000;
+  sansExcentrique.citerne = 4000;
+  sansExcentrique.commandes.feu = 1;
+  sansExcentrique.commandes.regulateur = 1;
+  demarrer(sansExcentrique, plaine());
+  assert.equal(sansExcentrique.machine.cale, true, "sans excentrique, la machine aurait dû rester prise au point mort malgré l'élan");
 
-  const avecAvance = course({ volant: 1 }, {});
+  const avecAvance = course({}, {});
   assert.equal(avecAvance.machine.cale, false, 'la même machine, avec son avance, aurait dû partir du premier élan');
 });
 
@@ -134,7 +168,7 @@ test("un circuit fermé vapeur-pompe-roue à eau rend toujours moins qu'il ne pr
   assert.ok(net < 0, `le circuit fermé rend du travail pour rien : ${net.toFixed(1)}`);
 
   // Et sur l'engin : le bassin une fois rempli, le montage est livré à lui-même.
-  const engin = M.nouvelEngin(['roues', 'pompe', 'roue_a_eau', 'volant']);
+  const engin = M.nouvelEngin(['roues', 'pompe', 'roue_a_eau']);
   engin.circuit.haut = 30;
   engin.commandes.circuit = 1;
   engin.commandes.pompe = 1;
@@ -153,47 +187,46 @@ test('une roue à eau posée sur la rivière donne du mouvement sans rien brûle
 
 // 9
 test('le changement de marche inverse le mouvement', () => {
-  const avant = course({ volant: 1 }, {});
+  const avant = course({}, {});
   assert.ok(avant.distance > 40, `marche avant : ${avant.distance.toFixed(1)} m`);
 
-  const recul = machineVapeur({ volant: 1 });
+  const recul = machineVapeur();
   recul.machine.marche = 'arriere';
   demarrer(recul, plaine()); // le chauffeur donne le coup de barre du côté demandé
   assert.ok(recul.distance < -40, `marche arrière : ${recul.distance.toFixed(1)} m`);
 });
 
 // 10
-test('plus le tiroir recouvre, plus il faut de volants pour passer les points morts', () => {
-  // Le ladder complet, et c'est le troc du jeu entier : chaque cran de compression
-  // demande un volant de plus, et chaque volant réclame son poids. Un tiroir à
-  // long recouvrement détend la vapeur plus loin — donc il comprime plus fort
-  // avant de rouvrir, et le point mort devient un piège.
-  const sansVolant = course({ volant: 0, recouvrement: 0.6 }, {});
-  const unVolant = course({ volant: 1, recouvrement: 0.6 }, {});
-  assert.equal(sansVolant.machine.cale, true, 'à ce recouvrement, la machine sans volant aurait dû rester prise');
-  assert.equal(unVolant.machine.cale, false, 'un volant aurait dû suffire à ce recouvrement');
+test('un tiroir qui recouvre trop garde la machine au point mort', () => {
+  // Le recouvrement, c'est la largeur du tiroir sur ses lumières. Plus il est
+  // grand, plus la vapeur renfermée est comprimée avant de rouvrir : le ressort
+  // du point mort se durcit. A ce reglage la machine ne part plus d'un simple
+  // coup de barre — il lui faut de l'elance, et elle ne le sait qu'au depart.
+  const auDepart = course({ recouvrement: 0.6 }, {});
+  assert.equal(auDepart.machine.cale, true, 'a ce recouvrement, la machine aurait du rester prise au depart');
 
-  const unSeul = course({ volant: 1, recouvrement: 0.75 }, {});
-  assert.equal(unSeul.machine.cale, true, 'un seul volant aurait dû rester pris avec ce tiroir à très long recouvrement');
+  const lancee = (() => {
+    const engin = machineVapeur({ recouvrement: 0.6 });
+    rouler(engin, plaine(), { duree: CHAUFFE });
+    engin.pousser(4); // deux hommes sur le levier, pas un
+    rouler(engin, plaine(), { duree: 60 });
+    return engin;
+  })();
+  assert.equal(lancee.machine.cale, false, 'un grand elan aurait du sortir cette machine de son point mort');
+  assert.ok(lancee.distance > 60, `la machine n'a parcouru que ${lancee.distance.toFixed(0)} m une fois lancee`);
 
-  const trois = course({ volant: 3, recouvrement: 0.75 }, {});
-  assert.equal(trois.machine.cale, false, 'trois volants auraient dû passer là où un seul reste pris');
-});
-
-test('mais chaque volant pèse plus lourd et grimpe moins bien', () => {
-  const route = (volant) => course({ volant }, { pente: 0.1 }).distance;
-  const [un, trois] = [route(1), route(3)];
-  assert.ok(
-    trois < un,
-    `plus d'inertie ne doit pas vouloir dire plus de route en côte : le poids se paie (${trois.toFixed(1)} m contre ${un.toFixed(1)} m)`
-  );
+  // Et ce réglage ne rend pas plus de travail pour autant : le tiroir avare
+  // raccourcit l'admission.
+  const large = M.travailParCourse({ pressionAdmission: 6, avance: M.AVANCE_NOMINALE, recouvrement: 0.7 });
+  const nominal = M.travailParCourse({ pressionAdmission: 6, avance: M.AVANCE_NOMINALE });
+  assert.ok(large.aller < nominal.aller, 'un tiroir a long recouvrement ne volerait rien a la vapeur');
 });
 
 // 11
 test('la vapeur qui siffle par la soupape a brûlé du charbon pour rien', () => {
   // Machine bloquée, feu à fond : la pression est plafonnée par la soupape, le
   // charbon part, et rien ne tourne. C'est ça que le Rendement du jeu sanctionne.
-  const engin = machineVapeur({ volant: 1 });
+  const engin = machineVapeur();
   rouler(engin, plaine(), { duree: 90 });
   const bilan = engin.bilan();
   assert.equal(engin.distance, 0, 'une machine quon ne pousse pas devrait rester à sa place');
@@ -201,20 +234,22 @@ test('la vapeur qui siffle par la soupape a brûlé du charbon pour rien', () =>
   assert.ok(engin.chaudiere.pression <= M.PRESSION_MAX, 'la soupape ne protège plus rien');
   assert.ok(bilan.charbonBrule > 5, `le foyer a brûlé ${bilan.charbonBrule.toFixed(1)} kg sans rien faire tourner`);
 
-  // À distance égale, une machine qui patine dans une forte pente brûle plus.
+  // A distance egale, une machine qui patine dans une forte rampe brule plus :
+  // les roues tournent, la machine ne monte pas, et la vapeur part.
   const route = (pente) => {
-    const e = machineVapeur({ volant: 1 });
+    const e = machineVapeur();
     rouler(e, plaine({ pente }), { duree: CHAUFFE });
-    e.pousser();
-    const b = rouler(e, plaine({ pente }), { duree: 900, distanceCible: 120 });
-    return { ...b, patine: e.machine.patine };
+    e.pousser(4);
+    const b = rouler(e, plaine({ pente }), { duree: 1200, distanceCible: 120 });
+    return { ...b, distance: Math.abs(e.distance), patine: e.machine.patine };
   };
-  const plainePlate = route(0);
-  const glissante = route(0.45);
-  assert.equal(glissante.patine, true, 'dans cette pente, les roues devraient patiner sur lacier');
+  const seche = route(0);
+  const glissante = route(0.35);
+  assert.equal(glissante.patine, true, 'dans cette rampe, les roues devraient patiner sur lacier');
+  assert.equal(seche.patine, false, "a plat, les roues n'ont aucune raison de patiner");
   assert.ok(
-    glissante.charbonBrule / glissante.distance > 1.5 * (plainePlate.charbonBrule / plainePlate.distance),
-    `patiner ne devrait pas payer : ${(glissante.charbonBrule / glissante.distance).toFixed(2)} contre ${(plainePlate.charbonBrule / plainePlate.distance).toFixed(2)} kg par mètre`
+    glissante.charbonBrule / glissante.distance > 1.5 * (seche.charbonBrule / seche.distance),
+    `patiner ne devrait pas payer : ${(glissante.charbonBrule / glissante.distance).toFixed(2)} contre ${(seche.charbonBrule / seche.distance).toFixed(2)} kg par mètre`
   );
 });
 
@@ -222,13 +257,12 @@ test('la vapeur qui siffle par la soupape a brûlé du charbon pour rien', () =>
 test('la vapeur usée chassée par la tuyère active le feu', () => {
   assert.ok(M.appelDair({ vapeurEchappee: 1 }) > M.appelDair({ vapeurEchappee: 0 }), "l'échappement ne change rien au tirage");
 
-  const avecBoite = machineVapeur({ volant: 1 });
+  const avecBoite = machineVapeur();
   const sansBoite = M.nouvelEngin(MACHINE.filter((id) => id !== 'boite_a_fumee'));
   sansBoite.soute = 4000;
   sansBoite.citerne = 4000;
   sansBoite.commandes.feu = 1;
   sansBoite.commandes.regulateur = 1;
-  sansBoite.brancher('volant');
   for (const engin of [avecBoite, sansBoite]) {
     rouler(engin, plaine(), { duree: CHAUFFE });
     assert.ok(engin.chaudiere.pression > 3, 'la chauffe devrait donner de la pression');

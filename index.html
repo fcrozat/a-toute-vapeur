@@ -54,15 +54,20 @@ const modeleVapeur = (() => {
   const RAPPORT = 3;              // l'arbre tourne trois fois plus vite que les roues
   const PENTE_ROULAGE = 0.02;
   const AERODYNAMIQUE = 0.25;
-  const ADHERENCE = 0.5;         // acier sur acier, les trois cinquièmes du poids sur les motrices
+  // Acier sur acier : le fer glisse sur le fer. Un boudin de roue n'accroche que
+  // le quart environ du poids qu'il porte, et le reste part en patinage — les
+  // tours s'emballent, la machine ne monte pas, et le charbon brûle pour rien.
+  const ADHERENCE = 0.3;
   const POIDS_MOTEUR = 0.85;
   const FROTTEMENT_STATIQUE = 0.25;
-  // Paliers, bielle, tiroir, injection d'eau : une machine frotte pour de bon, et
-  // c'est ce qui l'arrete quand le feu tombe. Sans ce terme, un chassis sans
-  // vapeur roulerait des minutes apres la derniere soupire.
-  const FROTTEMENT_ARBRE = 0.35;
-  const INERTIE_MACHINE = 1.2;
-  const INERTIE_VOLANT = 6;
+  // Paliers, bielle, tiroir : une machine frotte, et son frottement croît avec
+  // le régime. Il est petit devant la pesanteur : c'est la côte qui arrête la
+  // machine, pas ses paliers.
+  const FROTTEMENT_ARBRE = 0.015;
+  // Vilebrequin, pignons, tige : ce qui tourne avec l'arbre. Le chassis roule
+  // avec lui, et sa masse est la vraie inertie de la machine : 3,6 tonnes
+  // emportées à 5 km/h valent bien tous les volants du monde.
+  const INERTIE_MACHINE = 0.02;
 
   // Rivales et gags
   const K_ROUE_A_EAU = 0.55;      // même constante que la pompe : le circuit fermé rend moins
@@ -105,7 +110,6 @@ const modeleVapeur = (() => {
     vilebrequin: { nom: 'Vilebrequin', famille: 'machine', masse: 0.2 },
     secondes_bielles: { nom: 'Secondes bielles', famille: 'machine', masse: 0.07 },
     roues: { nom: 'Roues', famille: 'machine', masse: 0.3 },
-    volant: { nom: 'Volant', famille: 'machine', masse: 0.4, inertie: INERTIE_VOLANT },
     boite_a_fumee: { nom: 'Boîte à fumée', famille: 'machine', masse: 0.12 },
     tuyere: { nom: "Tuyère d'échappement", famille: 'machine', masse: 0.04 },
     soupape: { nom: 'Soupape de sûreté', famille: 'machine', masse: 0.03 },
@@ -123,13 +127,32 @@ const modeleVapeur = (() => {
     remorque: { nom: 'Remorque', famille: 'gag', masse: 0.8 },
   };
 
-  // Le tiroir en deux lignes : sa position, commandée par l'excentrique, décide
-  // quel côté reçoit la vapeur vive et lequel rend la sienne.
+  // Le tiroir, tel qu'il est réglé : sa position, commandée par l'excentrique,
+  // décide quelle lumière reçoit la vapeur vive et laquelle rend la sienne.
+  // Chaque lumière voit trois états, et non deux :
+  // la vapeur vive quand le tiroir dégage la glace d'admission ; la vapeur perdue
+  // quand il dégage le conduit d'échappement de l'autre côté ; couverte entre les
+  // deux, et alors la vapeur renfermée se comprime ou se détend comme un ressort.
+  // C'est l'ordre même d'un tiroir à D : admission jusqu'à la coupure, détente,
+  // échappement ouvert avant la fin de course, compression avant le point mort,
+  // et l'avance qui rouvre l'admission un peu avant ce point mort.
+  // Glaces égales, le réglage classique : l'échappement se ferme assez tôt pour
+  // que la vapeur renfermée se relève en comprimant, et que la face suivante trouve
+  // de la pression avant meme le point mort. Une glace d'échappement trop étroite
+  // laisserait les deux faces à la pression du jour : un trou de couple par où la
+  // machine tombe et ne se relève plus.
+  const RECOUVREMENT_ECHAPPEMENT = RECOUVREMENT;
+
   function ouvertures(angle, avance, recouvrement = RECOUVREMENT) {
     const x = Math.sin(angle + avance);
     return {
       avant: clamp01((x - recouvrement) / (1 - recouvrement)),
       arriere: clamp01((-x - recouvrement) / (1 - recouvrement)),
+      // L'échappement d'une face ne dépend pas de l'admission d'en face : il suit
+      // sa propre glace. Sans cette règle, les deux chambres se retrouvaient pleines
+      // de vapeur vive à la même pression, et la machine se verrouillait elle-même.
+      echappeAvant: x < -RECOUVREMENT_ECHAPPEMENT,
+      echappeArriere: x > RECOUVREMENT_ECHAPPEMENT,
     };
   }
 
@@ -144,8 +167,15 @@ const modeleVapeur = (() => {
     const admetAvant = o.avant > OUVERTURE_MIN;
     const admetArriere = o.arriere > OUVERTURE_MIN;
     const poly = (p, vOld, vNew) => p * (vOld / vNew) ** INDICE_POLYTROPIQUE;
-    const pAvant = admetAvant ? pressionAdmission : admetArriere ? PRESSION_AMBIANTE : poly(scellee.avant, volumes.avant, vAvant);
-    const pArriere = admetArriere ? pressionAdmission : admetAvant ? PRESSION_AMBIANTE : poly(scellee.arriere, volumes.arriere, vArriere);
+    // Une face sous vapeur, une face à l'air libre, ou la vapeur de la seconde
+    // précédente qui se comprime : c'est tout le carnet d'indicateur.
+    const pressionFace = (admet, echappe, scelleeAvant, vOld, vNew) => {
+      if (admet) return pressionAdmission;
+      if (echappe) return PRESSION_AMBIANTE;
+      return poly(scelleeAvant, vOld, vNew);
+    };
+    const pAvant = pressionFace(admetAvant, o.echappeAvant, scellee.avant, volumes.avant, vAvant);
+    const pArriere = pressionFace(admetArriere, o.echappeArriere, scellee.arriere, volumes.arriere, vArriere);
     // Le remplissage : la vapeur vive ne fait pas de magie, elle occupe la place
     // que le piston lui libère. C'est de là que vient toute la consommation.
     const remplissage = Math.max(0, vAvant - volumes.avant) + Math.max(0, vArriere - volumes.arriere);
@@ -167,8 +197,12 @@ const modeleVapeur = (() => {
     recouvrement = RECOUVREMENT,
   }) {
     const o = ouvertures(angle, avance, recouvrement);
-    const pAvant = pressionAvant ?? (o.avant > OUVERTURE_MIN ? pressionAdmission : PRESSION_AMBIANTE);
-    const pArriere = pressionArriere ?? (o.arriere > OUVERTURE_MIN ? pressionAdmission : PRESSION_AMBIANTE);
+    // Diagramme idéal : la vapeur entre quand le tiroir admet, et le reste du
+    // temps la face respire à la pression du jour. Le détail de la compression
+    // est dans etatCylindre, qui est l'état réel de la machine.
+    const pressionFace = (ouverte, valeur) => (ouverte > OUVERTURE_MIN ? pressionAdmission : valeur);
+    const pAvant = pressionAvant ?? pressionFace(o.avant, PRESSION_AMBIANTE);
+    const pArriere = pressionArriere ?? pressionFace(o.arriere, PRESSION_AMBIANTE);
     return FORCE_CYLINDRE * (pAvant - (1 - SECTION_TIGE) * pArriere) * Math.sin(angle);
   }
 
@@ -237,6 +271,10 @@ const modeleVapeur = (() => {
       // Le changement de marche renvoie l'excentrique de l'autre côté : le couple
       // change de signe, et la machine repart en sens inverse.
       avanceEffective() {
+        // L'avance vient de l'excentrique, et de lui seul. Sans lui le tiroir est
+        // calé droit : la vapeur n'admet qu'une fois le piston parti, et la machine
+        // reste prise à son point mort, chauffée comme on voudra.
+        if (!this.pieces.excentrique) return 0;
         return this.machine.marche === 'arriere' ? Math.PI - this.machine.avance : this.machine.avance;
       },
       // Ce que les réservoirs embarqués peuvent contenir : charbon ou eau.
@@ -310,7 +348,24 @@ const modeleVapeur = (() => {
     return engin.masseTotale() * GRAVITE * (PENTE_ROULAGE * sens + penteReelle(engin, monde)) + AERODYNAMIQUE * v * v * sens;
   }
 
+  // Le pas de l'écran n'est pas le pas du calcul. La vapeur comprimée est un
+  // ressort raide, et un ressort raide s'intègre mal à grands pas : la machine
+  // se met à basculer d'un bord sur l'autre au lieu de s'arrêter. Le modèle se
+  // subdivise donc lui-même, quel que soit le pas que lui apporte l'appelant.
+  const PAS_CALCUL = 1 / 480;
+
   function pasDeTemps(engin, monde, dt) {
+    const passe = Math.min(dt, PAS_CALCUL);
+    let reste = dt;
+    while (reste > 1e-12) {
+      const d = Math.min(passe, reste);
+      pasInterne(engin, monde, d);
+      reste -= d;
+    }
+    return engin;
+  }
+
+  function pasInterne(engin, monde, dt) {
     const c = engin.commandes;
     const chaudiere = engin.chaudiere;
     const machine = engin.machine;

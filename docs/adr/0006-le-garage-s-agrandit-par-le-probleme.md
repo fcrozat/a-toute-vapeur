@@ -1,6 +1,6 @@
 # Le garage s'agrandit par le problème, pas par des niveaux
 
-Il n'y a pas de parcours : le joueur est libre dès la première seconde, avec un engin qui roule déjà. En revanche, le catalogue de pièces s'agrandit quand l'engin rencontre l'ennui correspondant — trois calages au point mort ouvrent le volant, une côte refusée ouvre la transmission, un réservoir vide ouvre la citerne. Chaque nouvelle pièce arrive avec une phrase de Braise qui nomme ce qui vient de se passer.
+Il n'y a pas de parcours : le joueur est libre dès la première seconde, avec un engin qui roule déjà. En revanche, le catalogue de pièces s'agrandit quand l'engin rencontre l'ennui correspondant — trois calages au point mort ouvrent l'excentrique, une côte refusée ouvre la transmission, un réservoir vide ouvre la citerne. Chaque nouvelle pièce arrive avec une phrase de Braise qui nomme ce qui vient de se passer.
 
 ## Considered Options
 
