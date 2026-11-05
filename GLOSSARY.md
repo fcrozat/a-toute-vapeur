@@ -36,6 +36,30 @@ _Avoid_ : ravitaillement, recharge, remplissage
 Ce que le jeu compte comme « bien joué » : la distance parcourue rapportée au charbon brûlé. Un engin qui roule beaucoup en gaspillant beaucoup n'a pas un bon rendement.
 _Avoid_ : score, performance, efficacité
 
+**Soute**:
+La pièce où l'engin garde le charbon qu'il n'a pas encore brûlé.
+_Avoid_ : réserve, coffre, stock, inventaire
+
+**Citerne**:
+La pièce où l'engin garde l'eau que la chaudière n'a pas encore vaporisée. Elle se remplit à la rivière ou à la pompe ; la chaudière, elle, ne se remplit pas toute seule.
+_Avoid_ : réservoir, tonneau, ballon
+
+**Niveau**:
+Ce qui reste dans une soute ou une citerne, rapporté à ce qu'elles contiennent quand elles sont pleines. Il se dit avec les mots du chauffeur : pleine, à moitié, basse, presque vide, vide.
+_Avoid_ : jauge (la jauge est l'instrument, le niveau ce qu'elle montre), autonomie, pourcentage
+
+**Tours faits**:
+Le nombre de tours que le vilebrequin a accomplis depuis le début de l'essai. Des tours ne sont pas du chemin : une machine qui patine en fait beaucoup.
+_Avoid_ : rotations, tours de roue, distance
+
+**Vitesse de temps**:
+La montre du joueur, pas celle de la machine : ×1, ×2, ×4, pour que la longue montée en pression reste une scène et non une corvée. La machine, elle, vit la même physique, minute pour minute.
+_Avoid_ : accéléré, turbo, fast-forward
+
+**Mémoire (de jeu)**:
+Le carnet du jeu : ce qu'il a déjà rencontré, ce que le garage a décroché, le meilleur rendement mesuré. Vide au premier lancement.
+_Avoid_ : profil, historique, base de données, cache
+
 ### La machine à vapeur
 
 **Machine à vapeur**:
@@ -105,6 +129,18 @@ _Avoid_ : glissement (le glissement désigne la perte de prise, le patinage est 
 **Souffler**:
 Se dit de la soupape qui laisse partir la vapeur qu'on ne soutire pas. Un foyer qui souffle a brûlé du charbon pour rien, et le joueur l'entend.
 _Avoid_ : siffler (le siffler est le bruit, pas le geste), purger
+
+**À l'arrêt**:
+Se dit d'une machine dont rien ne tourne et que le feu ne pousse plus. Elle n'est pas calée : aucun point mort ne la retient, elle n'a plus de raison d'avancer.
+_Avoid_ : calée (une machine calée a de la vapeur et un point mort), en panne, éteinte
+
+**À sec**:
+Se dit d'une chaudière dont l'eau a disparu : la tôle travaille et ne fabrique plus de vapeur. Une citerne pleine n'y change rien tant que l'eau n'est pas rendue à la chaudière.
+_Avoid_ : vide (une citerne est vide, une chaudière est à sec), surchauffe
+
+**Tôle (qui travaille)**:
+Se dit de la chaudière dont la pression monte faute de soupape : la tôle travaille. Le jeu la montre travailler, il ne la fait pas sauter.
+_Avoid_ : explosion, critique, danger (le mot du jeu est celui de la tôle)
 
 **Bosse**:
 Remontée courte et raide du chemin, où la machine doit avoir de l'élan avant d'entrer. Une pente de fond se monte à peu près n'importe comment ; une bosse se paie en élan perdu et en temps.
