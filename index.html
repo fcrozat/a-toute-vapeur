@@ -591,16 +591,164 @@ const reglesDuJeu = (() => {
   const FEU_BAS = 0.05;
 
   // Ce que fait l'engin, à l'instant où on le regarde : un nom, sans mémoire.
-  function situation(engin) {
+  // Deux appels sur le même état répondent pareil. Le terrain ne change rien
+  // aujourd'hui à ce nom ; il est là pour que la projection n'ait qu'une forme
+  // à connaître.
+  function situation(engin, monde) {
+    const chaudiere = engin.chaudiere;
+    const machine = engin.machine;
+    // Par priorité fixe, du plus grave au plus banal (spec, décision 4).
+    if (chaudiere.danger) return 'danger';
+    if (chaudiere.aSec) return 'sec';
     // Feu bas et rien qui tourne : la veillée. Ce n'est pas un point mort.
     if (!engin.mouvement() && engin.commandes.feu <= FEU_BAS) return 'arret';
     // Une machine tenue à son point mort par la vapeur renfermée n'est pas à
     // l'arrêt : elle a chaud et elle attend un élan.
-    if (engin.machine.cale) return 'cale';
-    return engin.mouvement() ? 'roule' : 'arret';
+    if (machine.cale) return 'cale';
+    if (machine.patine) return 'patine';
+    if (chaudiere.soupapeSiffle) return 'souffle';
+    return 'roule';
   }
 
-  const reglesDuJeu = { situation, FEU_BAS };
+  // Le mot que l'écran affiche pour ce nom. Une seule table, et des mots du
+  // glossaire : l'élève ne doit jamais dépendre d'une couleur pour comprendre.
+  const MOTS_DE_SITUATION = {
+    danger: 'Tôle qui travaille',
+    sec: 'À sec',
+    arret: 'À l’arrêt',
+    cale: 'Calée',
+    patine: 'Patine',
+    souffle: 'Souffle',
+    roule: 'Roule',
+  };
+
+  // La pression où la soupape laisse partir la vapeur, telle que la jauge doit la
+  // marquer. Le modèle garde sa limite pour lui — il n'expose que PRESSION_MAX —
+  // donc les règles notent la zone à dessiner, et une promesse vérifie qu'elle
+  // est bien là où le modèle fait souffler la soupape.
+  const ZONE_SOUPAPE = 11;
+
+  // Les mots de la vitesse, du lent au rapide (spec : « 5 km/h — bon train »).
+  // Ce qu’on garde s’appelle l’élan ; ce qu’on mesure s’appelle la vitesse.
+  const ALLURES = [
+    { jusquOu: 0.5, mots: 'sans élan' },
+    { jusquOu: 3, mots: 'au pas' },
+    { jusquOu: 7, mots: 'bon train' },
+    { jusquOu: 12, mots: 'grand train' },
+    { jusquOu: Infinity, mots: 'train d’enfer' },
+  ];
+
+  function sensDeLaMarche(v) {
+    if (Math.abs(v) < 1e-6) return 'immobile';
+    return v < 0 ? 'arriere' : 'avant';
+  }
+
+  function vitesseDite(engin) {
+    // La vitesse angulaire est signée : la marche arrière est négative. La
+    // grandeur se lit en chiffres, le signe passe au sens — une jauge qui
+    // afficherait « -5 km/h » mentrait sur la vitesse.
+    const v = engin.vitesse();
+    const kmh = Math.abs(v) * 3.6;
+    const dixieme = Math.round(kmh * 10) / 10;
+    return {
+      kmh: dixieme,
+      chiffres: `${dixieme.toFixed(1).replace('.', ',')} km/h`,
+      mots: ALLURES.find((allure) => kmh < allure.jusquOu).mots,
+      sens: sensDeLaMarche(v),
+    };
+  }
+
+  // La place des organes, pour que la projection dessine sans rien calculer
+  // d'autre que de la géométrie (spec, décision 14). `tiroir` vaut de -1 à 1 :
+  // c’est la course du tiroir sous l’excentrique, telle que le modèle la voit.
+  // Ce que l’engin porte, en comptes par pièce : de quoi dessiner exactement le
+  // montage, rien de plus. C’est une copie — la projection ne peut pas brancher
+  // une pièce en écrivant dans l’état du jeu.
+  function piecesPortees(engin) {
+    return { ...engin.pieces };
+  }
+
+  const borne01 = (v) => (v < 0 ? 0 : v > 1 ? 1 : v);
+
+  // La fumée de la cheminée dit le feu : ce que le chauffeur a réglé, et ce que
+  // la vapeur usée tire par la tuyère. Le modèle appelle ça l’appel d’air ;
+  // l’écran en fait une densité, de 0 (foyer froid) à 1 (feu d’enfer).
+  function fumeeDite(engin) {
+    const commandes = engin.commandes;
+    if (!engin.pieces.foyer || engin.soute <= 0 || commandes.feu <= 0) return { densite: 0 };
+    const tirage = modeleVapeur.appelDair({ vapeurEchappee: engin.fluxEchappe() });
+    const partDeTirage = borne01((tirage - 1) / 1.1);
+    return { densite: borne01(commandes.feu * (0.7 + 0.3 * partDeTirage)) };
+  }
+
+  // Le chemin sous les roues : ce qui défile, la pente que le dessin donne à
+  // l’engin, et les bosses à venir, telles que le monde les pose (spec,
+  // décision 14 : le tracé du sol est de la géométrie, pas de la physique).
+  function solVu(engin, monde) {
+    return {
+      distance: engin.distance,
+      pente: modeleVapeur.penteReelle(engin, monde),
+      // La pente au point où le dessin pose son crayon : il n’a qu’à additionner
+      // pente × largeur pour avoir le profil, et il ne redécide pas du terrain.
+      penteEn: (x) => modeleVapeur.penteDuMonde(x, monde),
+      bosses: (monde.bosses || []).map((bosse) => ({ ...bosse })),
+    };
+  }
+
+  function etatDeLaMachine(engin) {
+    const machine = engin.machine;
+    return {
+      angle: machine.angle,
+      tours: machine.tours,
+      cale: machine.cale,
+      patine: machine.patine,
+    };
+  }
+
+  // La distribution vue de face : le tiroir sur sa glace, et les lumières qu'il
+  // découvre. `tiroir` vaut de -1 à 1 ; `lumiere` de 0 (couverte) à 1 (grande
+  // ouverte) ; `echappement` dit si la face rend sa vapeur.
+  function etatDeLaDistribution(engin) {
+    const machine = engin.machine;
+    const avance = engin.avanceEffective();
+    const o = modeleVapeur.ouvertures(machine.angle, avance, machine.recouvrement);
+    return {
+      tiroir: Math.sin(machine.angle + avance),
+      lumiere: { avant: o.avant, arriere: o.arriere },
+      echappement: { avant: o.echappeAvant, arriere: o.echappeArriere },
+    };
+  }
+
+  function jaugeDePression(engin) {
+    const chaudiere = engin.chaudiere;
+    return {
+      pression: chaudiere.pression,
+      ambiante: modeleVapeur.PRESSION_AMBIANTE,
+      fond: modeleVapeur.PRESSION_MAX,
+      soupape: ZONE_SOUPAPE,
+      souffle: chaudiere.soupapeSiffle,
+    };
+  }
+
+  // L'unique interface lue par la projection (spec, décision 3). Si l'affichage
+  // a besoin d'une valeur de plus, c'est ici qu'elle entre — jamais un plongeon
+  // dans l'engin.
+  function etatDuJeu(engin, monde) {
+    const s = situation(engin, monde);
+    return {
+      situation: s,
+      mot: MOTS_DE_SITUATION[s],
+      jauge: jaugeDePression(engin),
+      vitesse: vitesseDite(engin),
+      machine: etatDeLaMachine(engin),
+      distribution: etatDeLaDistribution(engin),
+      pieces: piecesPortees(engin),
+      fumee: fumeeDite(engin),
+      sol: solVu(engin, monde),
+    };
+  }
+
+  const reglesDuJeu = { situation, etatDuJeu, MOTS_DE_SITUATION, FEU_BAS, ZONE_SOUPAPE };
   return reglesDuJeu;
 })();
 // ===== REGLES : FIN =====
