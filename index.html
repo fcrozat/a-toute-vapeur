@@ -581,6 +581,29 @@ const modeleVapeur = (() => {
   return modeleVapeur;
 })();
 // ===== MODELE : FIN =====
+
+// ===== REGLES : DEBUT =====
+// Les règles du jeu : elles lisent le modèle et rendent ce que l'écran doit dire.
+// Elles ne dessinent rien, ne touchent à aucune constante physique, et ne savent
+// pas qu'il existe un navigateur.
+const reglesDuJeu = (() => {
+  // En dessous de ce feu, le chauffeur a quitté le foyer : plus personne ne conduit.
+  const FEU_BAS = 0.05;
+
+  // Ce que fait l'engin, à l'instant où on le regarde : un nom, sans mémoire.
+  function situation(engin) {
+    // Feu bas et rien qui tourne : la veillée. Ce n'est pas un point mort.
+    if (!engin.mouvement() && engin.commandes.feu <= FEU_BAS) return 'arret';
+    // Une machine tenue à son point mort par la vapeur renfermée n'est pas à
+    // l'arrêt : elle a chaud et elle attend un élan.
+    if (engin.machine.cale) return 'cale';
+    return engin.mouvement() ? 'roule' : 'arret';
+  }
+
+  const reglesDuJeu = { situation, FEU_BAS };
+  return reglesDuJeu;
+})();
+// ===== REGLES : FIN =====
   </script>
 </body>
 </html>
