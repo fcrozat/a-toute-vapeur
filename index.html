@@ -684,13 +684,27 @@ const reglesDuJeu = (() => {
   // Le chemin sous les roues : ce qui défile, la pente que le dessin donne à
   // l’engin, et les bosses à venir, telles que le monde les pose (spec,
   // décision 14 : le tracé du sol est de la géométrie, pas de la physique).
+  // La pente en un point du chemin : le fond, plus les rampes qui couvrent ce
+  // point. Le modèle ne rend la sienne qu’au droit des roues, donc les règles
+  // lisent le terrain tel que le monde le pose. Une promesse les tient d’accord
+  // : « la pente annoncée est celle des roues ».
+  function penteAuPoint(x, monde) {
+    let pente = monde.pente;
+    for (const rampe of monde.bosses) {
+      if (x >= rampe.a && x < rampe.a + rampe.longueur) pente += rampe.pente;
+    }
+    return pente;
+  }
+
   function solVu(engin, monde) {
     return {
       distance: engin.distance,
       pente: modeleVapeur.penteReelle(engin, monde),
       // La pente au point où le dessin pose son crayon : il n’a qu’à additionner
       // pente × largeur pour avoir le profil, et il ne redécide pas du terrain.
-      penteEn: (x) => modeleVapeur.penteDuMonde(x, monde),
+      // C’est la somme du fond et des rampes qui couvrent le point — la règle du
+      // modèle, revue à une promesse près : « la pente annoncée est celle des roues ».
+      penteEn: (x) => penteAuPoint(x, monde),
       bosses: (monde.bosses || []).map((bosse) => ({ ...bosse })),
     };
   }

@@ -4,7 +4,8 @@
 // physique (pasDeTemps), puis on interroge les règles — `situation`,
 // `etatDuJeu` — telles que la projection les lit. La projection SVG et la
 // boucle d'images ne se testent pas (spec, Testing Decisions) : c'est
-// l'étroitesse d'`etatDuJeu` qui tient lieu de garde.
+// l'étroitesse d'`etatDuJeu`, plus une promesse qui lit les deux sections comme
+// du texte, qui tiennent lieu de garde.
 //
 // Les règles sont extraites d'index.html par tests/harnais.js, comme le modèle,
 // et reçoivent le modèle comme unique point de départ : elles ne voient ni un
@@ -12,7 +13,7 @@
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { chargerModele, chargerRegles } from './harnais.js';
+import { chargerModele, chargerRegles, sourceModele, sourceRegles } from './harnais.js';
 
 const M = chargerModele();
 const R = chargerRegles();
@@ -184,6 +185,21 @@ test('la jauge de pression monte sous les yeux et marque la zone de la soupape',
     Math.abs(R.etatDuJeu(engin, monde).jauge.soupape - dernier) < 0.2,
     `la zone marquée (${R.etatDuJeu(engin, monde).jauge.soupape}) n est pas là où la soupape souffle (${dernier.toFixed(2)})`
   );
+});
+
+// 24
+test('ni le modèle ni les règles ne savent qu’il y a un écran', () => {
+  // La ligne de flottaison (spec, décision 3) : le modèle et les règles rendent
+  // des nombres, la projection touche au DOM. Elle ne se vérifie qu’en lisant les
+  // deux sections comme du texte — d’où le harnais qui les extrait.
+  const INTERDITS = ['document', 'window', 'localStorage', 'requestAnimationFrame'];
+  const sections = [['le modèle', sourceModele()], ['les règles', sourceRegles()]];
+  for (const [nom, source] of sections) {
+    assert.ok(source.length > 200, `la section « ${nom} » est vide : le harnais ne trouve plus ses marques`);
+    for (const mot of INTERDITS) {
+      assert.equal(source.includes(mot), false, `${nom} parle déjà d’écran : « ${mot} » s’y glisse`);
+    }
+  }
 });
 
 // 23
