@@ -182,6 +182,10 @@ _Avoid_ : coffre à fumée, cheminée (la cheminée en fait partie, ce n'est pas
 Ce qui pousse l'eau dans la chaudière sous pression. Il mange une part du travail de la machine, et cette part se paie en résistance sur l'arbre : une bride qui retient, jamais un moteur qui pousse.
 _Avoid_ : pompe (la pompe du décor est une pièce du monde), nourriture (le verbe du jeu est « injecter »)
 
+**Pompe (du décor)**:
+Le point de la ligne où l'eau se rend à une citerne. Ce n'est pas une pièce de l'engin : on ne la branche pas, on s'arrête à côté. Une rivière sans elle reste sur la rive, et l'écran le dit.
+_Avoid_ : injecteur (l'injecteur est une pièce de l'engin, voir ci-dessus), point d'eau, pompe à essence
+
 **Tuyère d'échappement**:
 Le tube par lequel la vapeur usée est chassée dans la boîte à fumée ; ce jet crée l'appel d'air qui active le feu.
 _Avoid_ : cheminée d'échappement, gueyard, souffleur (le souffleur envoie de la vapeur à part, sans passer par le cylindre)

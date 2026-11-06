@@ -1030,18 +1030,17 @@ const reglesDuJeu = (() => {
       if (engin.soute >= engin.capacite('soute')) return { mot: 'soute pleine' };
       return { mot: 'soutage en cours' };
     }
-    // Plus rien à brûler n'est pas la seule panne du trajet : une chaudière à sec
-    // perd ses tours, et l'aiguille seule ne le dit pas. Ici on nomme ce qui
-    // manque d'eau, à la rivière comme en rase campagne.
-    const soif = engin.chaudiere.aSec || engin.eauDisponible() <= 0;
-    if (!soif) return { mot: '' };
-    // Une pompe montée n'est pas ce qui manque : ce qui manque est l'arbre de
-    // pompe du décor, et le mot reste vrai dans les deux cas.
-    return {
-      mot: onEstA(engin, monde, 'riviere')
-        ? 'rivière : il manque une pompe'
-        : 'à sec : il manque une pompe',
-    };
+    // Plus rien à brûler n'est pas la seule panne du trajet : l'eau manque, la
+    // machine perd ses tours, et l'aiguille seule ne le dit pas. Le mot distingue
+    // les deux faims parce que le glossaire les distingue — une citerne est vide,
+    // une chaudière est à sec. Mesuré : la citerne se vide toujours la première, et
+    // le mot « à sec » n'arrive qu'après elle ; les deux branches se touchent donc,
+    // chacune avec son nom.
+    // L'eau de la rivière, elle, attend son arbre de pompe : ce billet l'annonce,
+    // il ne la livre pas.
+    if (engin.chaudiere.aSec) return { mot: 'à sec : il manque une pompe' };
+    if (engin.eauDisponible() <= 0) return { mot: 'citerne vide : il manque une pompe' };
+    return { mot: '' };
   }
 
   // --- Ce que la machine a à dire de reste ---
