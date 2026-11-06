@@ -19,7 +19,7 @@
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { chargerModele } from './harnais.js';
+import { chargerModele, sourceModele } from './harnais.js';
 
 const M = chargerModele();
 const PAS = 1 / 120;
@@ -462,5 +462,268 @@ test('ce qui retient la machine ne la pousse pas', () => {
   for (const regulateur of [1, 0.5, 0.2, 0.01, 0]) {
     const par = chemin(regulateur);
     assert.ok(par > -1, `régulateur à ${regulateur}, la machine a reculé de ${(-par).toFixed(1)} m dans le vide`);
+  }
+});
+
+// --- Le billet #18 : la machine sent les pièces que l'établi peut démonter ------
+//
+// Les dix promesses qui suivent sont écrites à la manière du billet : une phrase au
+// présent, une pièce qui part, et ce que la machine fait ensuite. Elles sont mesurées
+// dans les conditions que le billet a utilisées pour se plaindre — machine du lever de
+// rideau (feu 0,8, régulateur ouvert), lancée à 1,50 m/s, la pièce retirée EN MARCHE,
+// et vingt secondes de marche après le geste — afin qu'aucune d'elles ne tienne grâce
+// à un banc mieux loti que le joueur. Le détail des chiffres est à
+// ~/.cache/moteur-vapeur-verifs/ticket18/.
+//
+// Ce que mesurait le billet, mesuré ici avant de toucher au modèle : sur les treize
+// pièces de l'engin d'ouverture, dix ne changeaient rien de visible (et `excentrique`
+// pour trois centièmes de mètre par seconde) — seule la vitesse comptait. Le modèle ne
+// consultait que le foyer, le cylindre, la boîte à fumée, l'excentrique, le régulateur,
+// la tuyère et la soupape. Les promesses qui suivent tiennent la réparation pièce par
+// pièce, et la dernière tient la règle qui empêche le trou de se rouvrir.
+const FEU_DU_LEVER = 0.8;
+const VITESSE_DU_LEVER = 1.5;
+const FENETRE = 20;
+
+// Le geste du billet, écrit une fois : une pièce ôtée (ou aucune, pour le témoin) sur
+// une machine lancée, et ce qu'elle devient pendant `duree` secondes.
+//
+// Vingt secondes, et la vitesse *moyenne* de la fenêtre : avec un cylindre unique,
+// l'instantanée bat d'un quart de tour à l'autre et peut lire zéro sur un point mort
+// sans que la machine s'arrête. Le billet mesurait l'instantanée ; s'en servir pour
+// promettre un arrêt en serait un autre.
+function demontage(id, { monde = plaine(), duree = FENETRE } = {}) {
+  const engin = machineVapeur({ feu: FEU_DU_LEVER, regulateur: 1 });
+  rouler(engin, plaine(), { duree: 40 });
+  engin.pousser();
+  let t = 0;
+  while (t < 200 && Math.abs(engin.vitesse()) < VITESSE_DU_LEVER) {
+    rouler(engin, plaine(), { duree: 0.25 });
+    t += 0.25;
+  }
+  assert.ok(
+    Math.abs(engin.vitesse()) >= VITESSE_DU_LEVER,
+    `la machine du lever de rideau n'atteint jamais ${VITESSE_DU_LEVER} m/s : la mesure du billet n'a plus de point de départ`
+  );
+  const avant = {
+    distance: engin.distance, charbon: engin.charbonBrule, eau: engin.eauPompee,
+    soute: engin.soute, citerne: engin.citerne,
+  };
+  if (id) engin.debrancher(id);
+  rouler(engin, monde, { duree });
+  return {
+    engin,
+    moyenne: (engin.distance - avant.distance) / duree,
+    trajet: engin.distance - avant.distance,
+    charbon: engin.charbonBrule - avant.charbon,
+    eau: engin.eauPompee - avant.eau,
+    charbonEfface: avant.soute - engin.soute,
+    eauEffacee: avant.citerne - engin.citerne,
+    vitesse: engin.vitesse(),
+    omega: engin.machine.vitesseAngulaire,
+    pression: engin.chaudiere.pression,
+    niveau: engin.chaudiere.niveauEau,
+    aSec: engin.chaudiere.aSec,
+    cale: engin.machine.cale,
+    patine: engin.machine.patine,
+  };
+}
+
+// 18
+test('une chaudière ôtée ne tient plus la vapeur', () => {
+  // Ce que la chaudière tient, c'est la vapeur. Le modèle ne le demandait pas : la
+  // jauge montait, le cylindre poussait et le feu brûlait pour une enveloppe que le
+  // joueur avait emportée ailleurs. Sans elle, plus rien de tenu et plus rien de
+  // poussé — et la facture continue, parce que le charbon sur la grille ne sait pas
+  // que l'enveloppe est partie.
+  const temoin = demontage(null, { duree: 60 });
+  const sans = demontage('chaudiere', { duree: 60 });
+  assert.ok(sans.pression < 1.05, `la pression est encore de ${sans.pression.toFixed(2)} bar sans chaudière : la vapeur reste tenue quelque part`);
+  assert.ok(temoin.pression - sans.pression > 3, `la jauge ne descend pas quand on ôte l'enveloppe (${sans.pression.toFixed(2)} contre ${temoin.pression.toFixed(2)} bar au témoin)`);
+  assert.ok(sans.trajet < 10, `la machine a parcouru ${sans.trajet.toFixed(1)} m sans chaudière (témoin ${temoin.trajet.toFixed(0)} m)`);
+  assert.equal(sans.cale, true, 'une machine sans chaudière continue de tourner');
+  assert.ok(sans.charbon > 0, "le feu s'est éteint avec la chaudière : le démontage ne coûte plus rien, il ne reste que le gain");
+  assert.ok(sans.charbon > temoin.charbon * 0.5, `le feu n'a brûlé que ${sans.charbon.toFixed(1)} kg contre ${temoin.charbon.toFixed(1)} au témoin : il ne tourne plus rond, il est coupé`);
+  assert.equal(sans.niveau, 1, "l'eau de la chaudière a bougé : ce qui manque à la machine, ce n'est pas l'eau");
+});
+
+// 18
+test('une chaudière remontée reprend son métier', () => {
+  // Démonter doit être réversible : la jauge doit remonter quand la pièce revient,
+  // sinon le geste du billet est un piège et non une leçon. Le redémarrage à chaud,
+  // lui, obéit à la promesse 3 : une machine calée sur son point mort a besoin d'un
+  // élan que la seule pression ne lui donne pas.
+  const { engin } = demontage('chaudiere', { duree: 60 });
+  assert.ok(engin.chaudiere.pression < 1.05, 'la chaudière nétait pas tombée à la pression ambiante avant le remontage');
+  engin.brancher('chaudiere');
+  rouler(engin, plaine(), { duree: 150 });
+  assert.ok(engin.chaudiere.pression > 4, `remontée, la chaudière n'a fait que ${engin.chaudiere.pression.toFixed(2)} bar en 150 s de feu`);
+});
+
+// 18
+test('sans roues, la machine navance pas', () => {
+  // La vitesse dite du voyage est celle des roues rapportée au sol (`vitesse`). Le
+  // billet demandait de trancher : « ω × rayon est un choix de modélisation qui
+  // devient faux quand on démonte la roue ». Le voici écrit : pas de roues, pas de
+  // vitesse — pas une vitesse de manivelle déguisée en vitesse de voyage. L'arbre,
+  // lui, tourne plus vite qu'avant : il n'y a plus rien à traîner.
+  const temoin = demontage(null);
+  const sans = demontage('roues');
+  assert.equal(sans.vitesse, 0, `la machine annonce ${sans.vitesse.toFixed(2)} m/s sans roues`);
+  assert.equal(Math.abs(sans.trajet) < 1e-9, true, `l'engin a parcouru ${sans.trajet.toFixed(3)} m sans roues`);
+  assert.ok(Number.isFinite(sans.engin.distance) && Number.isFinite(sans.omega), "l'absence de roues rend un nombre que l'écran ne saurait pas dessiner");
+  assert.ok(sans.omega > temoin.omega, `l'arbre ne tourne même pas plus vite sans rien à tirer (${sans.omega.toFixed(2)} contre ${temoin.omega.toFixed(2)})`);
+  assert.equal(sans.patine, true, "l'entraînement qui file dans le vide ne s'appelle pas patiner : le mot rendu à l'écran est « Patine »");
+  assert.ok(sans.charbon > 0, 'le charbon, lui, ne demande pas les roues');
+});
+
+// 18
+test('sans roues, la rampe ne retient plus rien non plus', () => {
+  // Le revers de la même décision, écrit parce qu'il se paie : une machine sans roues
+  // ne prend plus au sol, donc le relief ne peut plus rien lui reprendre. Elle ne
+  // monte pas la rampe pour autant — elle n'avance pas du tout. Garder le soulèvement
+  // pour la seule roue absente serait le vrai mensonge, celui quaucune image ne
+  // couvre (ADR 0010).
+  for (const pente of [0.06, 0.15]) {
+    const grimpe = demontage(null, { monde: plaine({ pente }) });
+    const sans = demontage('roues', { monde: plaine({ pente }) });
+    assert.ok(grimpe.trajet > 5, `témoin à ${pente * 100} % : la machine na fait que ${grimpe.trajet.toFixed(1)} m, la mesure ne montre rien`);
+    assert.equal(Math.abs(sans.trajet) < 1e-9, true, `roues ôtées, la machine a parcouru ${sans.trajet.toFixed(3)} m sur une rampe à ${pente * 100} %`);
+  }
+});
+
+// 18
+test('sans tiroir, la vapeur passe et ne pousse rien', () => {
+  // Le tiroir est la distribution elle-même. Ôté, les deux glaces appellent la vapeur
+  // vive en même temps : aucun couple, et un chemin grand ouvert par où la chaudière
+  // se vide. Le modèle ne dit plus « distribution par défaut » — il dit qu'il n'y a
+  // plus de distribution du tout, et il en laisse la trace à la jauge.
+  const temoin = demontage(null);
+  const sans = demontage('tiroir');
+  assert.ok(sans.trajet < 5, `la machine a parcouru ${sans.trajet.toFixed(1)} m sans tiroir (témoin ${temoin.trajet.toFixed(0)} m)`);
+  assert.equal(sans.cale, true, 'une machine sans distribution continue de tourner');
+  assert.ok(temoin.pression - sans.pression > 0.8, `la chaudière ne se vide pas plus vite par le chemin libre (${sans.pression.toFixed(2)} contre ${temoin.pression.toFixed(2)} bar)`);
+  assert.ok(sans.eau > 0, "linjecteur n'a plus rien à renvoyer : la chaudière n'est plus en train de bouillir, elle est morte");
+});
+
+// 18
+test('sans crosse, le piston travaille pour personne', () => {
+  // La crosse porte la tige, la bielle la transmet : ôtées, le cylindre respire tant
+  // que l'arbre tourne et ne rend plus rien. Ce que la vapeur devient est écrit à
+  // l'ADR 0010 : dépensée, pas perdue. Elle est passée, le charbon est brûlé, l'engin
+  // ne bouge plus — et c'est la leçon, pas un bug à cacher.
+  const temoin = demontage(null);
+  const sans = demontage('crosse');
+  assert.ok(sans.trajet < 5, `la machine a parcouru ${sans.trajet.toFixed(1)} m sans crosse (témoin ${temoin.trajet.toFixed(0)} m)`);
+  assert.equal(sans.cale, true, 'une machine sans crosse transmet encore son travail');
+  assert.ok(sans.eau > 0, "l'injecteur n'a rien poussé : la vapeur est coupée en amont, ce n'est pas le lien qui manque");
+  assert.ok(sans.charbon > 0, 'le charbon brûlé sur la fenêtre est à zéro : démonter la crosse aurait éteint le feu');
+});
+
+// 18
+test('sans bielle, le piston travaille pour personne', () => {
+  // La seconde moitié du lien, promise pour elle-même : la bielle a son nom au
+  // catalogue et sa ligne à l'établi, donc son retrait doit se voir au cylindre.
+  const temoin = demontage(null);
+  const sans = demontage('bielle');
+  assert.ok(sans.trajet < 5, `la machine a parcouru ${sans.trajet.toFixed(1)} m sans bielle (témoin ${temoin.trajet.toFixed(0)} m)`);
+  assert.equal(sans.cale, true, 'une machine sans bielle transmet encore son travail');
+  assert.ok(sans.eau > 0, "l'injecteur n'a rien poussé sans bielle : le cylindre ne respire plus du tout");
+  assert.ok(sans.charbon > 0, 'le feu sauté avec la bielle : la chaudière ne serait plus en feu');
+});
+
+// 18
+test('sans soute, le charbon reste dans la soute', () => {
+  // Le modèle brûlait `engin.soute` sans jamais demander si la soute était montée.
+  // Tranché (ADR 0010) : le charbon est dans la pièce, pas dans la machine. Retirer
+  // la soute ne l'efface pas — le billet #8 a une promesse écrite pour que démonter ne
+  // mange rien d'autre que la masse — mais la machine n'y atteint plus. La jauge dit
+  // « vide » parce qu'il n'y a plus de soute, et la pièce remontée rend ce qu'elle
+  // contenait, ce qui évite le cul-de-sac tant que le charbonnage du billet #9
+  // n'existe pas.
+  const temoin = demontage(null, { duree: 60 });
+  const sans = demontage('soute', { duree: 60 });
+  assert.equal(sans.engin.charbonDisponible(), 0, 'la machine atteint encore son charbon sans soute');
+  assert.equal(sans.charbonEfface, 0, `démonter la soute a effacé ${sans.charbonEfface.toFixed(1)} kg : le démontage mangerait la réserve`);
+  assert.equal(sans.charbon, 0, `le feu a brûlé ${sans.charbon.toFixed(2)} kg sans soute`);
+  assert.ok(temoin.pression - sans.pression > 2, `la jauge ne baisse pas sans charbon à la grille (${sans.pression.toFixed(2)} contre ${temoin.pression.toFixed(2)} bar)`);
+  // Ce qu'elle parcourt encore est son élan (ADR 0008), pas le feu : la vitesse finit
+  // par terre pendant que le témoin tient la sienne.
+  assert.ok(sans.trajet < temoin.trajet * 0.4, `la machine a fait ${sans.trajet.toFixed(0)} m contre ${temoin.trajet.toFixed(0)} au témoin`);
+  assert.ok(Math.abs(sans.vitesse) < 0.1, `la machine roule encore à ${sans.vitesse.toFixed(2)} m/s après une minute sans soute (témoin ${temoin.vitesse.toFixed(2)})`);
+  sans.engin.brancher('soute');
+  rouler(sans.engin, plaine(), { duree: 150 });
+  assert.ok(sans.engin.chaudiere.pression > 4, 'la soute remontée ne rallume pas le foyer : le démontage est un piège');
+});
+
+// 18
+test('sans citerne, l injecteur na plus où puiser', () => {
+  // L'eau est dans la citerne comme le charbon dans la soute. Ôtée, la chaudière bout
+  // ce qu'elle a — et puis s'assèche. C'est long, volontairement : une machine qui
+  // s'arrête net quand on enlève un réservoir raconterait un réservoir qui n'existe
+  // pas, et l'élève ne verrait jamais le lien entre leau partie et la vapeur qui
+  // manque.
+  const temoin = demontage(null, { duree: 240 });
+  const sans = demontage('citerne', { duree: 240 });
+  assert.equal(sans.engin.eauDisponible(), 0, "l'injecteur puise encore sans citerne");
+  assert.equal(sans.eauEffacee, 0, `démonter la citerne a effacé ${sans.eauEffacee.toFixed(1)} L : le démontage mangerait la réserve`);
+  assert.equal(sans.eau, 0, `l'injecteur a encore poussé ${sans.eau.toFixed(1)} L sans citerne`);
+  assert.ok(sans.niveau < 0.06, `le niveau d'eau est encore à ${sans.niveau.toFixed(2)} : la chaudière ne s'assèche pas`);
+  assert.equal(sans.aSec, true, 'la chaudière ne dit pas « à sec » après avoir tout bouilli sans réserve');
+  assert.ok(Math.abs(sans.vitesse) < 0.05, `la machine roule encore à ${sans.vitesse.toFixed(2)} m/s après avoir tout bouilli`);
+  assert.ok(temoin.vitesse > 1, `le témoin lui-même ne roule plus (${temoin.vitesse.toFixed(2)} m/s au bout de quatre minutes) : la mesure n'a plus de sens`);
+});
+
+// 18
+test('le régulateur ôté laisse la vapeur grande ouverte', () => {
+  // Ce que le modèle fait depuis le billet #17, et que personne navait écrit :
+  // `pieces.regulateur` vaut faux et la conductance reste au maximum. Démonter une
+  // commande ne coupe pas la machine, ça rend la commande muette — le sens honnête, et
+  // le seul qui n'invente pas un état que le modèle ne sait pas tenir.
+  const chemin = (retirer, regulateur) => {
+    const engin = M.nouvelEngin(retirer ? MACHINE.filter((id) => id !== retirer) : MACHINE);
+    engin.soute = 4000;
+    engin.citerne = 4000;
+    engin.commandes.feu = 1;
+    engin.commandes.regulateur = regulateur;
+    rouler(engin, plaine(), { duree: CHAUFFE });
+    engin.pousser();
+    return rouler(engin, plaine(), { duree: 120 });
+  };
+  const serre = chemin(null, 0);
+  const muet = chemin('regulateur', 0);
+  const ouvert = chemin(null, 1);
+  assert.ok(muet.distance > serre.distance + 100, `régulateur ôté et levier fermé, la machine ne fait que ${muet.distance.toFixed(0)} m : démonter la commande a coupé la vapeur`);
+  assert.ok(Math.abs(muet.distance - ouvert.distance) < ouvert.distance * 0.02, `régulateur ôté, la machine ne court pas comme le robinet grand ouvert (${muet.distance.toFixed(0)} m contre ${ouvert.distance.toFixed(0)} m)`);
+});
+
+// 18
+test('une pièce que le modèle ne sent pas ne se démonte pas', () => {
+  // Le critère qui empêche ce billet d'avoir servi à rien dans six mois. Une pièce du
+  // catalogue na que deux façons dexister dans le modèle : soit le code la nomme
+  // (`pieces.<id>`), soit elle n'apporte que sa masse et elle est inscrite à
+  // `PIECES_A_MASSE_SEULE` avec sa raison. Une pièce nouvelle qui ne serait dans
+  // aucune des deux colonnes rougit cette promesse — exactement le trou dans lequel
+  // sont tombées les dix pièces du billet.
+  const source = sourceModele();
+  const masseSeule = M.PIECES_A_MASSE_SEULE;
+  assert.ok(masseSeule, 'le modèle ne expose pas PIECES_A_MASSE_SEULE : la seconde colonne est introuvable');
+  for (const [id, piece] of Object.entries(M.CATALOGUE)) {
+    assert.match(id, /^[a-z_]+$/, `« ${id} » : cette promesse ne sait lire que des identifiants de lettres et de tirets bas`);
+    const nommee = new RegExp(`pieces\\s*\\.\\s*${id}\\b`).test(source);
+    const inscrite = Object.prototype.hasOwnProperty.call(masseSeule, id);
+    assert.ok(
+      nommee !== inscrite,
+      nommee
+        ? `« ${piece.nom} » (${id}) est nommée par le modèle ET inscrite à masse seule : choisis une colonne`
+        : `« ${piece.nom} » (${id}) n'est dans aucune des deux colonnes : le modèle ne la sent pas et personne ne dit pourquoi. Traite-la (#18) ou inscris-la à PIECES_A_MASSE_SEULE avec sa raison.`
+    );
+    if (!inscrite) continue;
+    const entree = masseSeule[id];
+    assert.ok(typeof entree.raison === 'string' && entree.raison.length > 40, `« ${piece.nom} » est à masse seule sans dire pourquoi : la raison est la décision`);
+    assert.equal(typeof entree.seDemonte, 'boolean', `« ${piece.nom} » doit dire à l'établi si elle se démonte (seDemonte)`);
+  }
+  for (const id of Object.keys(masseSeule)) {
+    assert.ok(M.CATALOGUE[id], `la colonne des pièces à masse seule déclare « ${id} », que le catalogue ne connaît pas`);
   }
 });

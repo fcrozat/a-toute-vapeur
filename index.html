@@ -51,6 +51,8 @@
     #etabli[hidden] { display: none; }
     .piece { align-items: center; display: flex; gap: 8px; min-height: 48px; }
     .piece-nom { flex: 1 1 auto; }
+    /* Le mot qui dit qu'une pièce n'est pas un choix. Il se lit, il ne se clique pas. */
+    .piece-mot { flex: 0 0 auto; font-size: 11px; font-style: italic; color: #8d8272; margin-right: 6px; }
     .piece-nombre { min-width: 2ch; text-align: center; font-variant-numeric: tabular-nums; }
     .piece button { border: 1px solid #55636f; border-radius: 10px; background: #232a33; color: inherit; font: inherit; font-size: 1.4rem; line-height: 1; min-height: 48px; min-width: 48px; }
     .piece button[disabled] { opacity: .35; }
@@ -266,6 +268,15 @@ const modeleVapeur = (() => {
       seDemonte: true,
     },
   };
+
+  // La seconde parole de la table. Les règles et l'écran la demandent ici pour qu'il
+  // n'y ait qu'un seul endroit qui sache ce que « structurelle » veut dire : une
+  // pièce que le modèle ne sent que par sa masse, et dont la masse n'est pas le rôle,
+  // ne se démonte pas.
+  function estStructurelle(id) {
+    const inscrite = PIECES_A_MASSE_SEULE[id];
+    return Boolean(inscrite) && !inscrite.seDemonte;
+  }
 
   // Le tiroir, tel qu'il est réglé : sa position, commandée par l'excentrique,
   // décide quelle lumière reçoit la vapeur vive et laquelle rend la sienne.
@@ -789,6 +800,8 @@ const modeleVapeur = (() => {
 
   const modeleVapeur = {
     CATALOGUE,
+    PIECES_A_MASSE_SEULE,
+    estStructurelle,
     PRESSION_MAX,
     PRESSION_AMBIANTE,
     AVANCE_NOMINALE,
@@ -1048,6 +1061,7 @@ const reglesDuJeu = (() => {
   // ne compte en négatif.
   function demonterPiece(engin, memo, id) {
     if (!modeleVapeur.CATALOGUE[id]) return false;
+    if (modeleVapeur.estStructurelle(id)) return false;
     if ((engin.pieces[id] || 0) <= 0) return false;
     engin.debrancher(id);
     return true;
@@ -1076,7 +1090,10 @@ const reglesDuJeu = (() => {
         nom: modeleVapeur.CATALOGUE[id].nom,
         nombre,
         peutBrancher: nombre < limiteDePiece(id),
-        peutDemonter: nombre > 0,
+        // Une pièce structurelle n'est pas une pièce qu'on n'aurait pas encore ouverte :
+        // le chiffre reste à l'établi, le geste est refusé, et le mot le dit.
+        structurelle: modeleVapeur.estStructurelle(id),
+        peutDemonter: nombre > 0 && !modeleVapeur.estStructurelle(id),
       });
     }
     return lignes;
@@ -2168,11 +2185,13 @@ const reglesDuJeu = (() => {
     const oter = boutonDePiece('demonter', '−');
     const nom = document.createElement('span');
     nom.className = 'piece-nom';
+    const mot = document.createElement('span');
+    mot.className = 'piece-mot';
     const nombre = document.createElement('span');
     nombre.className = 'piece-nombre';
     const monter = boutonDePiece('brancher', '+');
-    ligne.append(oter, nom, nombre, monter);
-    return { element: ligne, oter, nom, nombre, monter };
+    ligne.append(oter, nom, mot, nombre, monter);
+    return { element: ligne, oter, nom, mot, nombre, monter };
   }
 
   function dessineLetabli(etat) {
@@ -2193,7 +2212,11 @@ const reglesDuJeu = (() => {
       }
       ecrire(ligne.nom, piece.nom);
       ecrire(ligne.nombre, String(piece.nombre));
-      nommer(ligne.oter, `Démonter : ${piece.nom}`);
+      // Une pièce structurelle garde son nom et son chiffre, mais le mot est écrit sur
+      // sa ligne : un bouton grisé sans explication laisserait l'élève chercher le
+      // geste qu'il n'y a pas. Le refus est aux règles (`demonterPiece`), ici seulement.
+      ecrire(ligne.mot, piece.structurelle ? 'structurelle' : '');
+      nommer(ligne.oter, piece.structurelle ? `Pièce structurelle, ne se démonte pas : ${piece.nom}` : `Démonter : ${piece.nom}`);
       nommer(ligne.monter, `Brancher : ${piece.nom}`);
       ligne.oter.disabled = !piece.peutDemonter;
       ligne.monter.disabled = !piece.peutBrancher;

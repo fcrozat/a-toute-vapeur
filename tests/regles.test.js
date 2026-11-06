@@ -1418,3 +1418,45 @@ test('à coups de clics, le nombre d’exemplaires rendu par les règles ne dép
   const reservoir = rendu.find((r) => r.id === 'citerne');
   assert.ok(reservoir.nombre > 1, 'une citerne de plus ne se monte pas : ce qui est réservoir ne se dédouble pas');
 });
+
+// Le billet #18 a une seconde face, à l'écran : une pièce que le modèle ne sent que
+// par sa masse, et dont la masse n'est pas le rôle, n'est pas un choix proposé au
+// joueur. Le refus est aux règles, la parole aussi — le dessin ne fait que la rendre.
+// Cette promesse est la seule qui parle du mot « structurelle » : si elle tombe,
+// l'établi montre une table sans rien dire de ce qu'il refuse.
+test("l'établi dit structurelle, et ne le propose pas comme un choix", () => {
+  const monde = plaine();
+  const engin = demarrer(machineVapeur(), monde);
+  const memo = R.nouvelleMemo();
+  const inscrites = Object.entries(M.PIECES_A_MASSE_SEULE);
+  assert.ok(inscrites.length > 0, 'aucune pièce inscrite à masse seule : cette promesse ne garde plus rien');
+
+  // Une pièce structurelle reste à l'établi, avec son nom et son chiffre : les cacher
+  // laisserait croire qu'elles n'existent pas. Ce qui change, c'est le geste.
+  for (const [id, entree] of inscrites) {
+    const depouille = demarrer(machineVapeur(), plaine());
+    const ouverte = R.nouvelleMemo();
+    ouverte.deblocages.push(id); // une piece hors de l'engin d'ouverture : le tiroir doit l'avoir vue
+    assert.equal(R.brancherPiece(depouille, ouverte, id), true, `« ${id} » : l'établi refuse de brancher cette pièce`);
+    const rang = R.etatDuJeu(depouille, plaine(), ouverte).etabli.pieces.find((r) => r.id === id);
+    assert.ok(rang, `« ${id} » a disparu de l'établi : une pièce qu'on ne peut pas démonter doit quand même se lire`);
+    assert.equal(rang.structurelle, !entree.seDemonte, `« ${id} » : la colonne dit seDemonte ${entree.seDemonte}, l'établi dit structurelle ${rang.structurelle}`);
+    assert.equal(rang.peutDemonter, !entree.seDemonte ? false : rang.nombre > 0, `« ${id} » : le geste proposé ne suit pas la colonne`);
+    assert.equal(
+      R.demonterPiece(depouille, ouverte, id),
+      entree.seDemonte,
+      entree.seDemonte ? `« ${id} » : sa masse est son rôle, l'établi doit la laisser démonter` : `« ${id} » : l'établi démonte une pièce structurelle`
+    );
+    assert.equal(depouille.pieces[id], entree.seDemonte ? 0 : 1, `« ${id} » : ${depouille.pieces[id]} exemplaire(s) après le geste`);
+  }
+
+  // Les treize pièces de l'engin d'ouverture ne sont pas structurelles : le billet #8
+  // reste tenu pour la machine que le joueur trouve au lever de rideau.
+  const rendu = R.etatDuJeu(engin, monde, memo).etabli.pieces;
+  for (const id of R.PIECES_DE_BASE) {
+    const rang = rendu.find((r) => r.id === id);
+    assert.equal(rang.structurelle, false, `« ${id} » est une pièce de l'engin d'ouverture et l'établi la dit structurelle`);
+  }
+  assert.equal(M.estStructurelle('cylindre'), false, 'le modèle dit quun cylindre est structurel');
+  assert.equal(M.estStructurelle('une piece que le catalogue ne connait pas'), false, 'le modèle trouve structurelle une pièce inconnue');
+});
