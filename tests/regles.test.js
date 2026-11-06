@@ -273,6 +273,18 @@ test('la fumée s’épaissit quand on monte le feu', () => {
   affame.soute = 0;
   rouler(affame, monde, { duree: 10 });
   assert.equal(R.etatDuJeu(affame, monde).fumee.densite, 0, 'la cheminée fume sans charbon');
+
+  // Billet #18 : la soute démontée garde sa charge — c'est le billet #8 qui le veut —
+  // mais le charbon n'est plus à portée de la grille. La cheminée dit le feu du
+  // modèle, pas le charbon qui dort dans une pièce ôtée.
+  const sansSoute = machineVapeur({ feu: 1 });
+  const memo = R.nouvelleMemo();
+  rouler(sansSoute, monde, { duree: 10 });
+  assert.ok(R.etatDuJeu(sansSoute, monde).fumee.densite > 0, 'avant le geste, la cheminée ne fume déjà plus');
+  assert.equal(R.demonterPiece(sansSoute, memo, 'soute'), true, "l'établi refuse de démonter la soute");
+  rouler(sansSoute, monde, { duree: 10 });
+  assert.ok(sansSoute.soute > 0, 'la soute démontrée a perdu son charbon : le billet #8 est tenu, pas celui-ci');
+  assert.equal(R.etatDuJeu(sansSoute, monde).fumee.densite, 0, 'la cheminée fume un feu que la grille ne peut plus nourrir');
 });
 
 // 21
@@ -1459,4 +1471,31 @@ test("l'établi dit structurelle, et ne le propose pas comme un choix", () => {
   }
   assert.equal(M.estStructurelle('cylindre'), false, 'le modèle dit quun cylindre est structurel');
   assert.equal(M.estStructurelle('une piece que le catalogue ne connait pas'), false, 'le modèle trouve structurelle une pièce inconnue');
+});
+
+// Le régulateur est la seule pièce dont l'absence était déjà honnête côté modèle
+// (ADR 0009 : conductance maximale, la vapeur entre en grand). Le billet #18 demande
+// que le geste ne ressemble pas à rien. Ce qui mentait, c'était le mot : « 37 % » sur
+// une commande que le modèle n'écoute plus. Le curseur garde sa place — c'est le doigt
+// du joueur —, le mot rend le robinet. Le billet #7 nommera la pièce manquante.
+test('le régulateur ôté ne rend plus le pourcentage d\'une commande muette', () => {
+  const monde = plaine();
+  const engin = demarrer(machineVapeur(), monde);
+  const memo = R.nouvelleMemo();
+  engin.commandes.regulateur = 0.37;
+  assert.equal(R.etatDuJeu(engin, monde).commandes.mot, '37 %', 'régulateur monté, le mot ne suit plus la commande');
+
+  assert.equal(R.demonterPiece(engin, memo, 'regulateur'), true, "l'établi refuse de démonter le régulateur");
+  // La commande reste où le doigt l'a laissée : démonter ne la recomande pas.
+  assert.equal(engin.commandes.regulateur, 0.37, 'démonter le régulateur a touché à la commande du chauffeur');
+
+  const mot = R.etatDuJeu(engin, monde).commandes.mot;
+  assert.equal(mot, 'grand ouvert', `régulateur ôté, l'écran dit « ${mot} » d'un robinet grand ouvert`);
+  assert.equal(/[0-9]/.test(mot), false, 'le mot du robinet ôté récite un pourcentage');
+  assert.ok(mot.length <= 16, `le mot du robinet déborde de l'écran : ${mot}`);
+
+  // La promesse est bien sur le mot, pas sur le hasard : remonter le régulateur rend
+  // la parole au curseur, et la commande n'avait pas bougé.
+  assert.equal(R.brancherPiece(engin, memo, 'regulateur'), true, 'le régulateur ôté ne se remonte pas');
+  assert.equal(R.etatDuJeu(engin, monde).commandes.mot, '37 %', 'régulateur remonté, la commande ne reprend pas la parole');
 });

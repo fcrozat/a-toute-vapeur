@@ -935,6 +935,15 @@ const reglesDuJeu = (() => {
     return pourCent === 0 ? 'fermé' : `${pourCent} %`;
   }
 
+  // Le mot du robinet, rendu cette fois par la machine et non par le doigt. Le
+  // régulateur ôté, l'ouverture est grande et le curseur ne peut plus rien changer
+  // (`conduiteDuRegulateur`) : afficher « 37 % » serait écrire une commande que le
+  // modèle n'écoute pas. Le billet #18 le demande, le billet #7 nommera la pièce
+  // manquante pour de bon ; ici le mot se borne à ne plus mentir.
+  function motDuRobinet(engin) {
+    return engin.pieces.regulateur ? motDuRegulateur(engin.commandes.regulateur) : 'grand ouvert';
+  }
+
   // --- Le temps de l'image ---
 
   // Les vitesses du temps : ×1, ×2, ×4. Elles ajoutent des pas par image et jamais
@@ -1106,7 +1115,10 @@ const reglesDuJeu = (() => {
   // l’écran en fait une densité, de 0 (foyer froid) à 1 (feu d’enfer).
   function fumeeDite(engin) {
     const commandes = engin.commandes;
-    if (!engin.pieces.foyer || engin.soute <= 0 || commandes.feu <= 0) return { densite: 0 };
+    // Le charbon se lit où la machine peut le prendre (`charbonDisponible`) : la
+    // soute démontree garde sa charge mais plus personne n'y puise, et une cheminée
+    // qui fumerait sans feu serait le même mensonge que la commande muette.
+    if (!engin.pieces.foyer || engin.charbonDisponible() <= 0 || commandes.feu <= 0) return { densite: 0 };
     const tirage = modeleVapeur.appelDair({ vapeurEchappee: engin.fluxEchappe() });
     const partDeTirage = borne01((tirage - 1) / 1.1);
     return { densite: borne01(commandes.feu * (0.7 + 0.3 * partDeTirage)) };
@@ -1404,8 +1416,9 @@ const reglesDuJeu = (() => {
         feu: engin.commandes.feu,
         regulateur: engin.commandes.regulateur,
         // Le mot vient de la commande réelle du modèle, pas de la position du
-        // curseur : c'est le robinet qui est fermé, pas le doigt du joueur.
-        mot: motDuRegulateur(engin.commandes.regulateur),
+        // curseur : c'est le robinet qui est fermé, pas le doigt du joueur. Et si le
+        // régulateur n'est pas monté, c'est encore le robinet qui parle.
+        mot: motDuRobinet(engin),
       },
       mot: MOTS_DE_SITUATION[s],
       // La forme qui va avec le mot. La projection la dessine ; elle ne devine
@@ -1431,7 +1444,7 @@ const reglesDuJeu = (() => {
   const reglesDuJeu = {
     situation, etatDuJeu, MOTS_DE_SITUATION, FORMES_DE_SITUATION, FEU_BAS, ZONE_SOUPAPE,
     PIECES_DE_BASE,
-    commandeDuCurseur, pourCentDuRegulateur, motDuRegulateur,
+    commandeDuCurseur, pourCentDuRegulateur, motDuRegulateur, motDuRobinet,
     piecesDeLetabli, limiteDePiece, brancherPiece, demonterPiece,
     VITESSES_DU_TEMPS, pasDeLImage, passerLImage,
     nouvelleMemo, MOT_DU_RENDEMENT, RENDEMENT_EN_ATTENTE,
