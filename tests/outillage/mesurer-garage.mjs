@@ -19,6 +19,8 @@
 // Les vitesses sont données en secondes de *machine* — à ×4, la machine vit quatre
 // secondes pendant que l'enfant en vit une.
 
+import { fileURLToPath } from 'node:url';
+
 import { chargerModele, chargerRegles } from '../harnais.js';
 
 const M = chargerModele();
@@ -210,9 +212,6 @@ function markdown() {
   sortie.push('');
   sortie.push('*lancée et laissée* :');
   sortie.push(markdownRelances(relances({ n: 4 })));
-  sortie.push('|lancer|distance|calages|ce qui s ouvre| secondes de machine depuis le lancement|');
-  sortie.push('|---|---|---|---|---|');
-  for (const l of relance.lignes) sortie.push(`|${l.lancer}|${l.distance}|${l.calages}|${l['ce qui s ouvre']}|${l['secondes de machine']}|`);
   sortie.push('');
   sortie.push('*qui ferme le robinet quand elle s arrête* :');
   sortie.push(markdownRelances(relances({ n: 4, ...PROFILS['qui ferme et rouvre le robinet'] })));
@@ -225,7 +224,15 @@ function markdown() {
   return sortie.join('\n');
 }
 
-if (process.argv.includes('--markdown')) {
+// Le rapport ne se joue que quand on joue le script. Une promesse et le feuillet de
+// relecture importent `mene` pour mesurer la même chose que lui : ils ne doivent pas
+// déclencher une heure de machine en important le fichier.
+if (process.argv[1] === fileURLToPath(import.meta.url)) {
+  rapport(process.argv.includes('--markdown'));
+}
+
+function rapport(enMarkdown) {
+if (enMarkdown) {
   console.log(markdown());
 } else {
   const t = trajet();
@@ -252,5 +259,6 @@ if (process.argv.includes('--markdown')) {
     };
   }));
 }
+}
 
-export { mene, relances, trajet, FAITS };
+export { mene, relances, trajet, FAITS, PROFILS, tableau, markdown, e2 };
