@@ -2536,8 +2536,13 @@ test('le feuillet de relecture du billet dit ce que le code dit', () => {
   assert.ok(feuillet.includes(`**${clefs.length} phrases**`.replace('**', '**')), 'le feuillet ne compte pas les phrases du jeu');
   for (const declic of R.TABLE_DU_GARAGE) {
     assert.ok(feuillet.includes(declic.episode), `le seuil de « ${declic.fait} » n'est pas énoncé dans le feuillet`);
-    assert.ok(new RegExp(`\\|\\s*${declic.fait}\\s*\\|\\s*${declic.seuil}\\s*\\|`).test(feuillet),
-      `la table du feuillet n'affiche pas ${declic.fait} à ${declic.seuil}`);
+    const rangee = feuillet.split('\n').find((ligne) => ligne.startsWith(`|${declic.fait}|`));
+    assert.ok(rangee, `la table du feuillet n'a plus de ligne « ${declic.fait} »`);
+    assert.ok(rangee.split('|').map((c) => c.trim()).includes(String(declic.seuil)),
+      `la ligne « ${declic.fait} » du feuillet n'affiche pas ${declic.seuil} : il montre un autre nombre que celui de la table`);
+    for (const id of declic.pieces) {
+      assert.ok(rangee.includes(M.CATALOGUE[id].nom), `la ligne « ${declic.fait} » ne nomme pas « ${id} »`);
+    }
   }
   // Ce que la ligne du jeu ne produit pas est écrit, pas tu.
   assert.match(feuillet, /second cylindre ne s'ouvre|ne s’ouvre jamais/);
