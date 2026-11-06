@@ -43,8 +43,40 @@ Pense à autoriser le port 8080 dans le pare-feu.
 
 ### Méthode C — en ligne (pour jouer chez des amis)
 
-Dépose le fichier sur n'importe quel hébergeur statique (GitHub Pages, Netlify Drop,
-Cloudflare Pages…). Comme il est autonome, une seule page suffit.
+**Le jeu est déjà en ligne : <https://fcrozat.github.io/a-toute-vapeur/>**
+
+GitHub Pages sert la **racine de la branche `v2-q38Fn`**. Un `git push` sur cette branche
+publie la nouvelle version en ~1 minute, sans autre formalité.
+
+```bash
+git push origin v2-q38Fn                                  # publier
+github_status() { gh api repos/fcrozat/a-toute-vapeur/pages -q .status; }   # building | built
+github_status; gh api -X POST repos/fcrozat/a-toute-vapeur/pages/builds     # recontruire sans nouveau commit
+```
+
+> ⚠️ **La branche publiée est un réglage du site, pas quelque chose que porte le code.**
+> Le jour où `v2-q38Fn` part en merge sur `main`, `main` ne publiera **rien** tant que
+> Pages pointera sur l'ancienne branche. Le re-pointer :
+>
+> ```bash
+> gh api -X PATCH repos/fcrozat/a-toute-vapeur/pages \
+>   -f 'source[branch]=main' -f 'source[path]=/'
+> ```
+> 
+> Inversement, publier une branche expérimentale écrase l'URL pour tout le monde : il n'y
+> a qu'un seul site par repo, pas d'URL de préversion par branche.
+
+Deux détails qui comptent :
+
+- `.nojekyll` (fichier vide, à la racine) désactive la compilation Jekyll. Pages sert
+  l'arbre tel quel : sans lui, GitHub passe chaque push par Jekyll, qui ignore certains
+  fichiers et ralentit la mise en ligne.
+- Le repo s'appelait `moteur-vapeur` et a été renommé en `a-toute-vapeur`. **Pages ne
+  redirige pas les URL après un renommage** : `https://fcrozat.github.io/moteur-vapeur/`
+  est en 404, préviens qui a l'ancien lien dans ses favoris.
+
+Comme le fichier est autonome, Netlify Drop ou Cloudflare Pages marchent aussi : glisse
+`index.html`, une seule page suffit.
 
 ---
 
