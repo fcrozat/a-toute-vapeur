@@ -1266,3 +1266,155 @@ test('toute pièce se démonte, rend sa masse, et ne touche ni au charbon ni à 
     assert.equal(depouille.pieces[id], 0, `« ${id} » : ${depouille.pieces[id]} exemplaires après démontage`);
   }
 });
+
+// L'excentrique est le seul à donner son avance (ADR 0005). Retiré, le tiroir se
+// cale droit : ce que voit l'élève à l'image suivante, c'est ce calcul, pas une
+// faveur des règles.
+test("retirer l'excentrique rend l'avance nulle et cale le tiroir droit", () => {
+  const monde = plaine();
+  const engin = demarrer(machineVapeur(), monde);
+  const memo = R.nouvelleMemo();
+
+  const avec = R.etatDuJeu(engin, monde, memo);
+  assert.equal(engin.avanceEffective(), engin.machine.avance, "l'excentrique monté ne donne pas son avance");
+  assert.ok(Math.abs(avec.distribution.tiroir - Math.sin(engin.machine.angle + engin.machine.avance)) < 1e-9, 'le tiroir dessiné ne suit pas l’avance de l’excentrique');
+
+  assert.equal(R.demonterPiece(engin, memo, 'excentrique'), true, "l'établi refuse de démonter l'excentrique");
+
+  const sans = R.etatDuJeu(engin, monde, memo);
+  assert.equal(engin.avanceEffective(), 0, 'sans excentrique, l’avance n’est pas nulle : la machine part avant le piston');
+  assert.ok(Math.abs(sans.distribution.tiroir - Math.sin(engin.machine.angle)) < 1e-9, `sans excentrique le tiroir dessiné reste décalé : ${sans.distribution.tiroir} au lieu de ${Math.sin(engin.machine.angle)}`);
+  assert.ok(!sans.pieces.excentrique, 'l’excentrique démonté est encore compté comme monté');
+});
+
+// Tous les nombres que l'écran pourrait vouloir dessiner. Une valeur non mesurable
+// n'a pas sa place à l'image : ni NaN, ni infini, et le dessin ne s'envole pas.
+function lesNombresFous(objet, chemin = '', sortie = []) {
+  for (const [cle, valeur] of Object.entries(objet ?? {})) {
+    const ou = chemin ? `${chemin}.${cle}` : cle;
+    if (typeof valeur === 'number' && !Number.isFinite(valeur)) sortie.push(`${ou}=${valeur}`);
+    else if (valeur && typeof valeur === 'object') lesNombresFous(valeur, ou, sortie);
+  }
+  return sortie;
+}
+
+// Promesse du billet : retirer la soupape en pleine chauffe. Le modèle tient : la
+// vapeur ne soutire plus rien, la pression monte jusqu'au fond de la jauge
+// (PRESSION_MAX) et s'y pose. Elle ne pète pas — c'est le billet #15 — mais elle ne
+// sort jamais du domaine que l'écran sait dessiner, et le mot affiché est bien celui
+// du danger.
+test("retirer la soupape en pleine chauffe ne produit aucun nombre que l'écran ne saurait dessiner", () => {
+  const monde = plaine();
+  const engin = demarrer(machineVapeur(), monde, { suite: 10 });
+  const memo = R.nouvelleMemo();
+
+  // Plus personne ne soutire la vapeur : le cylindre part aussi.
+  assert.equal(R.demonterPiece(engin, memo, 'cylindre'), true, 'le cylindre ne se démonte pas');
+  assert.equal(R.demonterPiece(engin, memo, 'soupape'), true, 'la soupape ne se démonte pas');
+
+  let pressionMax = 0;
+  // Deux minutes de feu, la vapeur ne va plus nulle part.
+  for (let n = 0; n < 120 / PAS; n += 1) {
+    M.pasDeTemps(engin, monde, PAS);
+    const etat = R.etatDuJeu(engin, monde, memo);
+    pressionMax = Math.max(pressionMax, etat.jauge.pression);
+    const fous = lesNombresFous(etat);
+    assert.equal(fous.length, 0, `image ${n} après démontage de la soupape : ${fous.join(', ')}`);
+  }
+
+  const etat = R.etatDuJeu(engin, monde, memo);
+  assert.equal(pressionMax, etat.jauge.fond, `la pression s'arrête à ${pressionMax}, et non au fond de la jauge (${etat.jauge.fond})`);
+  assert.equal(etat.mot, R.MOTS_DE_SITUATION.danger, `sans soupape à 12 atmosphères, l'écran dit « ${etat.mot} »`);
+  assert.ok(Number.isFinite(engin.distance), 'la distance n’est plus mesurable');
+});
+
+// Les autres scènes que le billet nomme. Chacune : on retire la pièce en cours de
+// route, on marche une minute, et on cherche ce qui casserait l'image — un nombre
+// non mesurable, ou un engin qui se téléporte.
+test("retirer la chaudière, les roues, la crosse, la citerne à sec ou la soute vide : l'écran tient", () => {
+  const SCENES = {
+    chaudiere: () => demarrer(machineVapeur(), plaine(), { suite: 10 }),
+    roues: () => demarrer(machineVapeur(), plaine(), { suite: 10 }),
+    crosse: () => demarrer(machineVapeur(), plaine(), { suite: 10 }),
+    bielle: () => demarrer(machineVapeur(), plaine(), { suite: 10 }),
+    citerne: () => { const e = machineVapeur(); e.citerne = 0; return demarrer(e, plaine(), { suite: 10 }); },
+    soute: () => { const e = machineVapeur(); e.soute = 0; return demarrer(e, plaine(), { suite: 10 }); },
+  };
+
+  for (const [id, fabriquer] of Object.entries(SCENES)) {
+    const monde = plaine();
+    const engin = fabriquer();
+    const memo = R.nouvelleMemo();
+    assert.equal(R.demonterPiece(engin, memo, id), true, `« ${id} » : l'établi refuse de démonter cette pièce`);
+
+    let saut = 0;
+    let avant = engin.distance;
+    for (let n = 0; n < 60 / PAS; n += 1) {
+      M.pasDeTemps(engin, monde, PAS);
+      const etat = R.etatDuJeu(engin, monde, memo);
+      const fous = lesNombresFous(etat);
+      assert.equal(fous.length, 0, `« ${id} », image ${n} : ${fous.join(', ')}`);
+      saut = Math.max(saut, Math.abs(engin.distance - avant));
+      avant = engin.distance;
+    }
+
+    assert.ok(Number.isFinite(engin.distance), `« ${id} » : la distance n'est plus mesurable`);
+    assert.ok(saut < 0.1, `« ${id} » : l'engin saute de ${saut.toFixed(3)} m entre deux images`);
+  }
+});
+
+// « La machine change visiblement de comportement à l'image suivante. » Quatre
+// pièces où le geste se voit, mesuré et non affirmé. Les autres pièces ne pèsent que
+// leur masse : c'est dit dans le rapport, pas caché sous une promesse complaisante.
+test('retirer le foyer, la boîte à fumée, le régulateur ou le cylindre change ce que la machine fait', () => {
+  const apres = (id, reglages = {}) => {
+    const monde = plaine();
+    const engin = demarrer(machineVapeur(reglages), monde, { suite: 60 });
+    const avant = engin.vitesse();
+    assert.equal(R.demonterPiece(engin, R.nouvelleMemo(), id), true, `« ${id} » : l'établi refuse de démonter cette pièce`);
+    rouler(engin, monde, { duree: 30 });
+    return { avant, apres: engin.vitesse(), cale: engin.machine.cale, pression: engin.chaudiere.pression };
+  };
+
+  const sansFeu = apres('foyer');
+  assert.ok(sansFeu.cale, `plus de foyer et la machine roule encore à ${sansFeu.apres.toFixed(2)} m/s`);
+
+  const sansTirage = apres('boite_a_fumee');
+  assert.ok(sansTirage.apres < sansTirage.avant * 0.7, `plus de boîte à fumée : ${sansTirage.avant.toFixed(2)} -> ${sansTirage.apres.toFixed(2)} m/s, l'élève ne verrait rien passer`);
+
+  // Le régulateur bridé à 40 % : retiré, la vapeur est libre — le modèle ouvre tout.
+  const sansRegulateur = apres('regulateur', { regulateur: 0.4 });
+  assert.ok(sansRegulateur.apres > sansRegulateur.avant * 1.1, `régulateur retiré d'une machine bridée : ${sansRegulateur.avant.toFixed(2)} -> ${sansRegulateur.apres.toFixed(2)} m/s`);
+
+  const sansCylindre = apres('cylindre');
+  assert.ok(sansCylindre.cale, `plus de cylindre et la machine avance à ${sansCylindre.apres.toFixed(2)} m/s`);
+  assert.ok(sansCylindre.pression > 8, `plus de cylindre et la pression reste à ${sansCylindre.pression.toFixed(1)} atmosphères`);
+});
+
+// La promesse de porte-monnaie vide, dans sa seconde moitié : quels que soient les
+// clics, le nombre d'exemplaires rendu par les règles ne dépasse jamais sa limite.
+test('à coups de clics, le nombre d’exemplaires rendu par les règles ne dépasse jamais sa limite', () => {
+  const monde = plaine();
+  const engin = M.nouvelEngin(R.PIECES_DE_BASE);
+  const memo = R.nouvelleMemo();
+  memo.deblocages.push(...Object.keys(M.CATALOGUE).filter((id) => !R.PIECES_DE_BASE.includes(id)));
+
+  for (const rang of R.etatDuJeu(engin, monde, memo).etabli.pieces) {
+    for (let n = 0; n < 30; n += 1) R.brancherPiece(engin, memo, rang.id);
+  }
+
+  const rendu = R.etatDuJeu(engin, monde, memo).etabli.pieces;
+  assert.equal(rendu.length, Object.keys(M.CATALOGUE).length, 'toutes les pièces décrochées ne se montrent pas à l’établi');
+  for (const rang of rendu) {
+    const borne = R.limiteDePiece(rang.id);
+    assert.ok(rang.nombre <= borne, `« ${rang.id} » : l'établi rend ${rang.nombre} exemplaires, sa limite est ${borne}`);
+    assert.ok(engin.pieces[rang.id] <= borne, `« ${rang.id} » : l'engin porte ${engin.pieces[rang.id]} exemplaires, sa limite est ${borne}`);
+    assert.equal(rang.peutBrancher, rang.nombre < borne, `« ${rang.id} » : le bouton ne dit pas la même chose que le compte`);
+    if (borne === 1) assert.equal(rang.nombre, 1, `« ${rang.id} » : pièce de structure restée à ${rang.nombre}`);
+  }
+
+  // Ce qui n'a pas de limite déclarée n'en reçoit pas d'inventée par l'établi.
+  assert.equal(R.limiteDePiece('citerne'), Infinity, 'l’établi a borné ce qui est réservoir');
+  const reservoir = rendu.find((r) => r.id === 'citerne');
+  assert.ok(reservoir.nombre > 1, 'une citerne de plus ne se monte pas : ce qui est réservoir ne se dédouble pas');
+});
