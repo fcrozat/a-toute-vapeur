@@ -1,586 +1,1233 @@
 <!doctype html>
 <html lang="fr">
 <head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>À toute vapeur</title>
-  <!--
-    À toute vapeur — un engin, une chaudière, et douze promesses tenues.
-    Licence : AGPLv3 pour le code (voir LICENSE) ; CC BY-SA 4.0 pour les dessins,
-    les textes de Braise et les sons. Dépôt : https://github.com/fcrozat/moteur-vapeur
-  -->
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<meta name="theme-color" content="#ff8c1a">
+<title>Le Moteur Farfelu</title>
+<style>
+/* ============================================================
+   Le Moteur Farfelu — un moteur de voiture à energies farfelues
+   Un seul fichier, aucune dependance, fait pour la tablette.
+   ============================================================ */
+
+:root {
+  --orange: #ff8c1a;
+  --rouge: #e63946;
+  --rouge-fonce: #a4161a;
+  --encre: #2b2d42;
+  --violet: #7209b7;
+  --jaune: #ffd166;
+}
+
+* { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+html, body { height: 100%; }
+body {
+  margin: 0;
+  font-family: "Comic Sans MS", "Chalkboard SE", "Comic Neue", "Marker Felt", cursive, sans-serif;
+  background: linear-gradient(180deg, #ffe8c8 0%, #ffd9a0 45%, #ffc36e 100%);
+  color: var(--encre);
+  overflow: hidden;
+  overscroll-behavior: none;
+  touch-action: manipulation;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
+}
+
+main {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  height: 100vh;
+  height: 100dvh;
+  padding: 8px 12px 10px;
+}
+
+header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0 4px;
+  flex: 0 0 auto;
+}
+header h1 { margin: 0; font-size: 24px; letter-spacing: .5px; }
+#bouton-son {
+  background: #fff;
+  border: 2px solid #dee2e6;
+  border-radius: 50%;
+  width: 44px; height: 44px;
+  font-size: 20px;
+  cursor: pointer;
+}
+
+/* ---------------- La piste ---------------- */
+.piste {
+  position: relative;
+  flex: 0 0 auto;
+  height: 118px;
+  border-radius: 18px;
+  overflow: hidden;
+  background: linear-gradient(#7ec8e3 0%, #bfe8f5 62%, #d9f0f7 100%);
+  box-shadow: inset 0 0 0 3px rgba(0,0,0,.06);
+}
+.route {
+  position: absolute;
+  left: 0; right: 0; bottom: 0;
+  height: 44%;
+  background: #4d4d5c;
+}
+.route::before {
+  content: "";
+  position: absolute;
+  top: 0; left: 0; right: 0;
+  height: 4px;
+  background: rgba(255,255,255,.35);
+}
+.bande {
+  position: absolute;
+  left: 0; right: 0;
+  top: 48%;
+  height: 5px;
+  background: repeating-linear-gradient(90deg, #fff 0 42px, transparent 42px 84px);
+  animation: defilement var(--duree-route, 1.6s) linear infinite;
+}
+@keyframes defilement { to { background-position-x: -84px; } }
+
+.voiture {
+  position: absolute;
+  left: 15%; bottom: 16%;
+  font-size: 54px;
+  line-height: 1;
+  transform: scaleX(-1);
+  z-index: 3;
+}
+.voiture.marche { animation: tremble .16s infinite; }
+@keyframes tremble {
+  0%, 100% { transform: scaleX(-1) translateY(0); }
+  50%      { transform: scaleX(-1) translateY(-2.5px); }
+}
+.voiture.fou { animation: tremble .16s infinite, roue-couleurs 1.4s linear infinite; }
+@keyframes roue-couleurs {
+  from { filter: hue-rotate(0deg) saturate(1.4); }
+  to   { filter: hue-rotate(360deg) saturate(1.4); }
+}
+
+.fumee {
+  position: absolute;
+  left: calc(15% + 46px); bottom: 20%;
+  font-size: 24px;
+  opacity: 0;
+  z-index: 2;
+}
+.fumee.affichee { animation: fumette 1.1s infinite; }
+@keyframes fumette {
+  0%   { opacity: 0; transform: translate(0, 0) scale(.6); }
+  35%  { opacity: .85; }
+  100% { opacity: 0; transform: translate(30px, -16px) scale(1.5); }
+}
+.fumee.noire { filter: brightness(.3); }
+.fumee.clare { filter: blur(.5px) brightness(1.3); }
+
+.flamme {
+  position: absolute;
+  left: calc(15% + 40px); bottom: 18%;
+  font-size: 22px;
+  display: none;
+  z-index: 2;
+}
+.flamme.affichee { display: block; animation: battement-flamme .12s infinite; }
+@keyframes battement-flamme { 50% { transform: scale(1.3) rotate(8deg); } }
+
+.etincelles {
+  position: absolute;
+  left: 16%; bottom: 72%;
+  font-size: 22px;
+  display: none;
+  z-index: 3;
+}
+.etincelles.affichee { display: block; animation: twinkle .8s infinite; }
+@keyframes twinkle {
+  0%, 100% { transform: scale(.8); opacity: .7; }
+  50%      { transform: scale(1.25); opacity: 1; }
+}
+
+/* ---------------- Le moteur ---------------- */
+.moteur {
+  flex: 0 0 auto;
+  background: #3a3f52;
+  border-radius: 18px;
+  padding: 10px 14px;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  box-shadow: inset 0 0 0 3px rgba(255,255,255,.07), 0 4px 0 rgba(0,0,0,.15);
+}
+.moteur.secoue { animation: secoue .4s; }
+@keyframes secoue {
+  25% { transform: translateX(-9px); }
+  50% { transform: translateX(9px); }
+  75% { transform: translateX(-5px); }
+}
+.moteur-titre { color: #fff; font-size: 20px; font-weight: bold; letter-spacing: 1px; }
+.moteur-sous { color: #adb5bd; font-size: 11px; margin-top: 2px; }
+.moteur-etiquette { width: 118px; flex: 0 0 auto; }
+
+.fiches { display: flex; gap: 14px; flex: 1; justify-content: center; }
+.fiche {
+  width: 86px; height: 86px;
+  border-radius: 50%;
+  border: 4px dashed rgba(255,255,255,.4);
+  background: rgba(255,255,255,.08);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  color: rgba(255,255,255,.55);
+  font-size: 11px;
+  position: relative;
+  touch-action: none;
+  cursor: grab;
+  transition: transform .12s, border-color .12s;
+}
+.fiche .emoji { font-size: 30px; line-height: 1.1; }
+.fiche .nom { font-size: 10px; text-align: center; color: inherit; padding: 0 2px; }
+.fiche.cible {
+  border-color: var(--jaune);
+  background: rgba(255, 209, 102, .3);
+  transform: scale(1.1);
+}
+.fiche.pleine { border-style: solid; border-color: #fff; color: #2b2d42; }
+
+/* ---------------- Les jauges ---------------- */
+.jauges {
+  flex: 0 0 auto;
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 8px;
+}
+.jauge {
+  background: rgba(255,255,255,.8);
+  border-radius: 12px;
+  padding: 6px 10px 8px;
+}
+.jauge .libelle {
+  display: flex;
+  justify-content: space-between;
+  font-size: 12px;
+  margin-bottom: 4px;
+}
+.barre {
+  height: 12px;
+  background: #e9ecef;
+  border-radius: 6px;
+  overflow: hidden;
+}
+.barre i {
+  display: block;
+  height: 100%;
+  width: 0;
+  border-radius: 6px;
+  transition: width .3s;
+}
+
+/* ---------------- Boutons ---------------- */
+.actions {
+  flex: 0 0 auto;
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+button {
+  font-family: inherit;
+  border: none;
+  border-radius: 14px;
+  padding: 10px 18px;
+  font-size: 15px;
+  font-weight: bold;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+#bouton-go {
+  background: var(--rouge);
+  color: #fff;
+  font-size: 20px;
+  padding: 12px 30px;
+  box-shadow: 0 5px 0 var(--rouge-fonce);
+}
+#bouton-go:active { transform: translateY(3px); box-shadow: 0 2px 0 var(--rouge-fonce); }
+#bouton-vider { background: #fff; border: 2px solid #adb5bd; color: #495057; }
+.record {
+  margin-left: auto;
+  background: rgba(255,255,255,.8);
+  border-radius: 10px;
+  padding: 8px 12px;
+  font-size: 14px;
+}
+
+/* ---------------- Braise, la mecanicienne ---------------- */
+.braise {
+  flex: 0 0 auto;
+  background: #fff;
+  border-left: 6px solid var(--orange);
+  border-radius: 10px;
+  padding: 8px 12px;
+  font-size: 14px;
+  margin: 0;
+  min-height: 42px;
+  display: flex;
+  align-items: center;
+}
+
+/* ---------------- L'etabli (les cartes d'energie) ---------------- */
+.etabli {
+  flex: 1;
+  min-height: 120px;
+  display: flex;
+  flex-direction: column;
+  background: rgba(255,255,255,.55);
+  border-radius: 18px;
+  padding: 8px 10px 10px;
+}
+.etabli-titre { margin: 0 4px 6px; font-size: 13px; color: #555; }
+.rail {
+  flex: 1;
+  display: flex;
+  gap: 10px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  padding: 8px 4px;
+  -webkit-overflow-scrolling: touch;
+  scroll-snap-type: x proximity;
+}
+.carte {
+  flex: 0 0 auto;
+  width: 108px;
+  border-radius: 14px;
+  padding: 10px 8px 12px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  border: 3px solid rgba(0,0,0,.1);
+  box-shadow: 0 3px 0 rgba(0,0,0,.15);
+  touch-action: pan-x;
+  cursor: grab;
+  scroll-snap-align: start;
+}
+.carte .emoji { font-size: 34px; line-height: 1.1; }
+.carte .nom { font-size: 12px; font-weight: bold; text-align: center; }
+.carte.dans-le-moteur { display: none; }
+.carte.tape { animation: wiggle .35s; }
+@keyframes wiggle {
+  25% { transform: rotate(-5deg); }
+  75% { transform: rotate(5deg); }
+}
+.carte.fantome {
+  position: fixed;
+  z-index: 1000;
+  pointer-events: none;
+  transform: translate(-50%, -60%) scale(1.12) rotate(-4deg);
+  opacity: .95;
+  margin: 0;
+}
+
+/* ---------------- Les voiles (course + resultat) ---------------- */
+.voile {
+  position: fixed;
+  inset: 0;
+  background: rgba(20, 20, 35, .88);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 500;
+}
+.voile.cache { display: none; }
+
+.course { width: min(94vw, 900px); text-align: center; color: #fff; }
+#titre-course { margin: 0 0 4px; font-size: 34px; letter-spacing: 2px; }
+#temps-course { margin: 0 0 16px; font-size: 22px; color: var(--jaune); }
+.circuit { display: flex; flex-direction: column; gap: 16px; }
+.couloir {
+  position: relative;
+  height: 74px;
+  background: #4d4d5c;
+  border-radius: 12px;
+  overflow: hidden;
+}
+.couloir::before {
+  content: "";
+  position: absolute;
+  left: 0; right: 0; top: 50%;
+  height: 4px;
+  background: repeating-linear-gradient(90deg, rgba(255,255,255,.5) 0 34px, transparent 34px 68px);
+}
+.arrivee {
+  position: absolute;
+  right: 8px; top: 0; bottom: 0;
+  width: 14px;
+  background: repeating-linear-gradient(45deg, #fff 0 8px, #111 8px 16px);
+}
+.voiture-course {
+  position: absolute;
+  left: 2%; bottom: 10px;
+  font-size: 42px;
+  line-height: 1;
+  transform: scaleX(-1);
+  z-index: 2;
+}
+.etiquette {
+  position: absolute;
+  left: 10px; top: 5px;
+  font-size: 12px;
+  font-weight: bold;
+  color: #fff;
+  background: rgba(0,0,0,.35);
+  border-radius: 8px;
+  padding: 2px 8px;
+}
+
+.panneau {
+  background: #fff;
+  border-radius: 22px;
+  padding: 26px 30px 28px;
+  width: min(92vw, 560px);
+  text-align: center;
+  box-shadow: 0 20px 60px rgba(0,0,0,.4);
+}
+#res-emoji { font-size: 64px; line-height: 1; }
+.panneau h2 { margin: 10px 0 8px; font-size: 26px; color: var(--rouge); }
+#res-texte { margin: 0 0 14px; font-size: 15px; color: #495057; }
+.res-temps {
+  background: #f1f3f5;
+  border-radius: 10px;
+  padding: 9px;
+  font-size: 14px;
+  margin-bottom: 10px;
+}
+#res-score { font-size: 18px; font-weight: bold; margin-bottom: 4px; }
+#res-record { font-size: 14px; color: #555; margin-bottom: 4px; }
+.res-boutons {
+  display: flex;
+  gap: 10px;
+  justify-content: center;
+  margin-top: 18px;
+  flex-wrap: wrap;
+}
+.res-boutons button { font-size: 16px; padding: 12px 18px; }
+#bouton-revoir { background: var(--orange); color: #fff; box-shadow: 0 4px 0 #c96a08; }
+#bouton-nouveau { background: #fff; border: 2px solid #adb5bd; color: #495057; }
+
+/* ---------------- Confettis ---------------- */
+.confetti {
+  position: fixed;
+  top: -20px;
+  width: 10px;
+  height: 16px;
+  z-index: 600;
+  pointer-events: none;
+  border-radius: 2px;
+  animation: chute var(--d, 2s) linear forwards;
+}
+@keyframes chute { to { transform: translateY(110vh) rotate(720deg); } }
+
+/* ---------------- Ecrans petits ---------------- */
+@media (max-height: 640px) {
+  header h1 { font-size: 19px; }
+  .piste { height: 92px; }
+  .voiture { font-size: 42px; }
+  .fiche { width: 70px; height: 70px; }
+  .fiche .emoji { font-size: 24px; }
+  .carte { width: 96px; }
+  .carte .emoji { font-size: 28px; }
+  .moteur-etiquette { width: 90px; }
+  .moteur-titre { font-size: 16px; }
+}
+</style>
 </head>
 <body>
-  <!-- Le monde, la coupe et l'établi arrivent dès que les douze promesses tiennent. -->
-  <p>Modèle physique vérifié par <code>npm test</code>. Rendu à venir.</p>
-  <script>
-// ===== MODELE : DEBUT =====
-// Le modèle compte, il ne dessine rien. C'est lui qui doit avoir raison.
-//
-// Unités de jeu : tonnes, kilonewtons, mètres, secondes, et un « muid » d'eau
-// vaporisée, unité arbitraire qui permet de ne jamais montrer une formule.
-// Deux libertés prises avec la réalité, toutes deux assumées :
-//  - l'engin entier tient dans un seul degré de liberté (l'arbre de la machine),
-//    la masse du véhicule y étant convertie ;
-//  - les volumes de cylindre sont sans dimension, à un coefficient près.
-const modeleVapeur = (() => {
-  // Chaudière
-  const PRESSION_AMBIANTE = 1;
-  const PRESSION_MAX = 12;
-  const PRESSION_SOUPAPE = 11;
-  const CAPACITE_CHAUDIERE = 6;   // muids par bar : ce que la chaudière contient
-  const PUISSANCE_FOYER = 1;      // muids vaporisés par seconde, feu d'enfer, tirage ordinaire
-  const CHARBON_PAR_SECOND = 0.35; // kg brûlés par seconde à feu d'enfer
-  const EAU_PAR_MUID = 0.01;      // fraction du niveau vaporisée par muid
-  const SEUIL_EAU_BAS = 0.06;     // en dessous, la tôle travaille et ça ne fait plus de vapeur
-  const FUITE_CHAUDIERE = 0.01;   // muids qui s'échappent des joints par seconde
+<main>
+  <header>
+    <h1>🔧 Le Moteur Farfelu</h1>
+    <button id="bouton-son" aria-label="son">🔊</button>
+  </header>
 
-  // Cylindre et distribution
-  const FORCE_CYLINDRE = 1.2;       // kN·m par bar, surface et rayon ramenés à un seul nombre
-  const SECTION_TIGE = 0.12;      // la tige mange de la surface côté vilebrequin
-  const VOLUME_CLAIR = 0.15;      // le tord-mort qui empêche la vapeur de disparaître
-  const INDICE_POLYTROPIQUE = 1.3;
-  const FUITE_SEEAU = 0.25;       // les segments laissent passer : le ressort s'affaisse
-  const FUITE_MACHINE = 0.02;
-  const CONSO_PAR_VOLUME = 0.8;   // muids avalés par volume de cylindre rempli
-  const CONDUCTANCE_MAX = 0.6;    // régulateur ouvert au maximum
-  const OUVERTURE_MIN = 0.05;
-  const AVANCE_NOMINALE = 0.5;    // l'excentrique, calé en avant de 0,5 rad
-  const RECOUVREMENT = 0.45;      // le tiroir recouvre largement ses lumières
+  <!-- La piste : la voiture roule selon la vitesse du moteur -->
+  <section class="piste" id="piste" aria-label="piste d'essai">
+    <div class="route">
+      <div class="bande" id="bande"></div>
+      <div class="etincelles" id="etincelles">✨</div>
+      <div class="flamme" id="flamme">🔥</div>
+      <div class="fumee" id="fumee">💨</div>
+      <div class="voiture" id="voiture">🚗</div>
+    </div>
+  </section>
 
-  // Sol, roues, inertie
-  const GRAVITE = 9.81;
-  const RAYON_ROUE = 0.6;
-  const RAPPORT = 3;              // l'arbre tourne trois fois plus vite que les roues
-  const PENTE_ROULAGE = 0.02;
-  const AERODYNAMIQUE = 0.25;
-  // Acier sur acier : le fer glisse sur le fer. Un boudin de roue n'accroche que
-  // le quart environ du poids qu'il porte, et le reste part en patinage — les
-  // tours s'emballent, la machine ne monte pas, et le charbon brûle pour rien.
-  const ADHERENCE = 0.3;
-  const POIDS_MOTEUR = 0.85;
-  const FROTTEMENT_STATIQUE = 0.25;
-  // Paliers, bielle, tiroir : une machine frotte, et son frottement croît avec
-  // le régime. Il est petit devant la pesanteur : c'est la côte qui arrête la
-  // machine, pas ses paliers.
-  const FROTTEMENT_ARBRE = 0.015;
-  // Vilebrequin, pignons, tige : ce qui tourne avec l'arbre. Le chassis roule
-  // avec lui, et sa masse est la vraie inertie de la machine : 3,6 tonnes
-  // emportées à 5 km/h valent bien tous les volants du monde.
-  const INERTIE_MACHINE = 0.02;
+  <!-- Le moteur : trois fiches d'energie -->
+  <section class="moteur" id="moteur" aria-label="moteur">
+    <div class="moteur-etiquette">
+      <div class="moteur-titre">MOTEUR</div>
+      <div class="moteur-sous">3 fiches d'énergie</div>
+    </div>
+    <div class="fiches">
+      <div class="fiche" data-fiche="0"></div>
+      <div class="fiche" data-fiche="1"></div>
+      <div class="fiche" data-fiche="2"></div>
+    </div>
+  </section>
 
-  // Rivales et gags
-  const K_ROUE_A_EAU = 0.55;      // même constante que la pompe : le circuit fermé rend moins
-  const K_POMPE = 0.55;
-  const CHUTE_RIVIERE = 1;
-  const V_COURANT = 2.5;          // une rivière rapide, mais une rivière
-  const RAYON_ROUE_A_EAU = 1.2;
-  const DEBIT_RIVIERE = 3;
-  const DEBIT_CIRCUIT = 1.5;
-  const RENDEMENT_ROUE = 0.7;
-  const CAP_POMPE = 0.8;
-  const RENDEMENT_POMPE = 0.6;
-  const K_EOLIPYLE = 0.35;        // la roue d'Héron : ça tourne, et ça boit
-  const CONSO_EOLIPYLE = 0.9;
-  const K_EOLIENNE = 0.8;
-  const K_VOILE = 1.6;
-  const FORCE_CHEVAL = 1.1;
-  const POUSSEE_FUSEE = 3.2;
-  const HAUSSE_CHAUDIERE = 3;     // mètres à remonter l'eau jusqu'à la chaudière
-  // L'injecteur pousse l'eau dans une chaudière déjà en pression : ça mange à peu
-  // près trois pour cent du travail de la machine, comme sur les vraies.
-  const K_INJECTEUR = 0.015;
+  <!-- Les jauges -->
+  <section class="jauges" aria-label="jauges">
+    <div class="jauge">
+      <div class="libelle"><span>🏁 Vitesse</span><b id="val-vitesse">0</b></div>
+      <div class="barre"><i id="barre-vitesse" style="background:#e63946"></i></div>
+    </div>
+    <div class="jauge">
+      <div class="libelle"><span>🌀 Bizarre</span><b id="val-bizarre">0</b></div>
+      <div class="barre"><i id="barre-bizarre" style="background:#7209b7"></i></div>
+    </div>
+    <div class="jauge">
+      <div class="libelle"><span>☁️ Fumée</span><b id="val-pollution">0</b></div>
+      <div class="barre"><i id="barre-pollution" style="background:#6c757d"></i></div>
+    </div>
+    <div class="jauge">
+      <div class="libelle"><span>🔊 Bruit</span><b id="val-bruit">0</b></div>
+      <div class="barre"><i id="barre-bruit" style="background:#f8961e"></i></div>
+    </div>
+  </section>
 
-  const clamp01 = (v) => (v < 0 ? 0 : v > 1 ? 1 : v);
-  const clamp = (v, bas, haut) => (v < bas ? bas : v > haut ? haut : v);
+  <section class="actions">
+    <button id="bouton-go">🏁 LANCE !</button>
+    <button id="bouton-vider">🧹 Vider</button>
+    <div class="record" id="record">Record : 0</div>
+  </section>
 
-  // Le catalogue : ce qu'on peut visser sur le châssis. `nom` est le mot vrai du
-  // métier, celui que le joueur survole pour avoir l'explication de Braise.
-  const CATALOGUE = {
-    chaudiere: { nom: 'Chaudière', famille: 'machine', masse: 1.2 },
-    foyer: { nom: 'Foyer', famille: 'machine', masse: 0.15 },
-    soute: { nom: 'Soute à charbon', famille: 'machine', masse: 0.2, capacite: 300 },
-    citerne: { nom: 'Citerne', famille: 'machine', masse: 0.2, capacite: 240 },
-    cylindre: { nom: 'Cylindre', famille: 'machine', masse: 0.35 },
-    tiroir: { nom: 'Tiroir de distribution', famille: 'machine', masse: 0.06 },
-    excentrique: { nom: 'Excentrique', famille: 'machine', masse: 0.05 },
-    regulateur: { nom: 'Régulateur', famille: 'machine', masse: 0.05 },
-    crosse: { nom: 'Crosse de piston', famille: 'machine', masse: 0.05 },
-    bielle: { nom: 'Bielle', famille: 'machine', masse: 0.08 },
-    vilebrequin: { nom: 'Vilebrequin', famille: 'machine', masse: 0.2 },
-    secondes_bielles: { nom: 'Secondes bielles', famille: 'machine', masse: 0.07 },
-    roues: { nom: 'Roues', famille: 'machine', masse: 0.3 },
-    boite_a_fumee: { nom: 'Boîte à fumée', famille: 'machine', masse: 0.12 },
-    tuyere: { nom: "Tuyère d'échappement", famille: 'machine', masse: 0.04 },
-    soupape: { nom: 'Soupape de sûreté', famille: 'machine', masse: 0.03 },
-    second_cylindre: { nom: 'Second cylindre', famille: 'machine', masse: 0.35 },
-    levier_de_detente: { nom: 'Levier de détente', famille: 'machine', masse: 0.05 },
-    changement_de_marche: { nom: 'Changement de marche', famille: 'machine', masse: 0.08 },
-    transmission: { nom: 'Engrenage de transmission', famille: 'machine', masse: 0.1 },
-    pompe: { nom: 'Pompe', famille: 'machine', masse: 0.15 },
-    roue_a_eau: { nom: 'Roue à eau', famille: 'rivale', masse: 0.5 },
-    eolienne: { nom: 'Éolienne', famille: 'rivale', masse: 0.3 },
-    voile: { nom: 'Voile', famille: 'rivale', masse: 0.1 },
-    cheval: { nom: 'Cheval', famille: 'rivale', masse: 0.5 },
-    eolipyle: { nom: 'Éolipyle', famille: 'gag', masse: 0.2 },
-    fusee: { nom: 'Fusée', famille: 'gag', masse: 0.3 },
-    remorque: { nom: 'Remorque', famille: 'gag', masse: 0.8 },
-  };
+  <p class="braise" id="braise-texte"></p>
 
-  // Le tiroir, tel qu'il est réglé : sa position, commandée par l'excentrique,
-  // décide quelle lumière reçoit la vapeur vive et laquelle rend la sienne.
-  // Chaque lumière voit trois états, et non deux :
-  // la vapeur vive quand le tiroir dégage la glace d'admission ; la vapeur perdue
-  // quand il dégage le conduit d'échappement de l'autre côté ; couverte entre les
-  // deux, et alors la vapeur renfermée se comprime ou se détend comme un ressort.
-  // C'est l'ordre même d'un tiroir à D : admission jusqu'à la coupure, détente,
-  // échappement ouvert avant la fin de course, compression avant le point mort,
-  // et l'avance qui rouvre l'admission un peu avant ce point mort.
-  // Glaces égales, le réglage classique : l'échappement se ferme assez tôt pour
-  // que la vapeur renfermée se relève en comprimant, et que la face suivante trouve
-  // de la pression avant meme le point mort. Une glace d'échappement trop étroite
-  // laisserait les deux faces à la pression du jour : un trou de couple par où la
-  // machine tombe et ne se relève plus.
-  const RECOUVREMENT_ECHAPPEMENT = RECOUVREMENT;
+  <!-- L'etabli : les cartes d'energie a glisser -->
+  <section class="etabli" aria-label="etabli">
+    <p class="etabli-titre">🧰 L'établi — glisse une énergie dans les fiches (tape une carte pour la faire parler)</p>
+    <div class="rail" id="rail"></div>
+  </section>
+</main>
 
-  function ouvertures(angle, avance, recouvrement = RECOUVREMENT) {
-    const x = Math.sin(angle + avance);
-    return {
-      avant: clamp01((x - recouvrement) / (1 - recouvrement)),
-      arriere: clamp01((-x - recouvrement) / (1 - recouvrement)),
-      // L'échappement d'une face ne dépend pas de l'admission d'en face : il suit
-      // sa propre glace. Sans cette règle, les deux chambres se retrouvaient pleines
-      // de vapeur vive à la même pression, et la machine se verrouillait elle-même.
-      echappeAvant: x < -RECOUVREMENT_ECHAPPEMENT,
-      echappeArriere: x > RECOUVREMENT_ECHAPPEMENT,
-    };
+<!-- Voile de course -->
+<div id="voile-course" class="voile cache">
+  <div class="course">
+    <h2 id="titre-course">COURSE !</h2>
+    <p id="temps-course">0,00 s</p>
+    <div class="circuit">
+      <div class="couloir">
+        <div class="arrivee"></div>
+        <div class="etiquette" id="etiquette-joueur"></div>
+        <div class="voiture-course" id="voiture-course">🚗</div>
+      </div>
+      <div class="couloir">
+        <div class="arrivee"></div>
+        <div class="etiquette" id="etiquette-adversaire"></div>
+        <div class="voiture-course" id="voiture-adversaire">🚙</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Voile de resultat -->
+<div id="voile-resultat" class="voile cache">
+  <div class="panneau">
+    <div id="res-emoji">🏆</div>
+    <h2 id="res-titre"></h2>
+    <p id="res-texte"></p>
+    <div class="res-temps" id="res-temps"></div>
+    <div id="res-score"></div>
+    <div id="res-record"></div>
+    <div class="res-boutons">
+      <button id="bouton-revoir">🔧 Revoir le moteur</button>
+      <button id="bouton-nouveau">🧹 Nouveau moteur</button>
+    </div>
+  </div>
+</div>
+
+<script>
+"use strict";
+
+/* ============================================================
+   1. Les donnees du jeu
+   ============================================================ */
+
+const SOURCES = [
+  { id: "essence",     nom: "Essence",            emoji: "⛽",  couleur: "#ffd166", vitesse: 5,  bizarre: 0,  pollution: 8, bruit: 6,
+    phrase: "Le classique. Ça marche, ça fume, et on ne sait pas très bien pourquoi tout le monde a peur." },
+  { id: "diesel",      nom: "Diesel",             emoji: "🛢️", couleur: "#b08968", vitesse: 6,  bizarre: 1,  pollution: 9, bruit: 8,
+    phrase: "Fait TROOUM et va très loin. Surtout quand il a mal dormi." },
+  { id: "electrique",  nom: "Électricité",        emoji: "⚡",   couleur: "#a2d2ff", vitesse: 7,  bizarre: 1,  pollution: 1, bruit: 1,
+    phrase: "Silencieuse et propre. Personne ne l'entend arriver, sauf les chatons." },
+  { id: "hydrogene",   nom: "Hydrogène",          emoji: "💧",   couleur: "#90e0ef", vitesse: 6,  bizarre: 2,  pollution: 0, bruit: 2,
+    phrase: "Ça brûle, et ça rend de l'eau. Presque de la magie." },
+  { id: "solaire",     nom: "Solaire",            emoji: "☀️",   couleur: "#ffbe0b", vitesse: 3,  bizarre: 1,  pollution: 0, bruit: 0,
+    phrase: "Gratuite quand le soleil se lève. La voiture se met en grève la nuit." },
+  { id: "nucleaire",   nom: "Nucléaire",          emoji: "☢️",   couleur: "#b5e48c", vitesse: 10, bizarre: 5,  pollution: 6, bruit: 3,
+    phrase: "Trop de puissance pour une petite voiture. C'est écrit sur l'étiquette." },
+  { id: "vapeur",      nom: "Vapeur d'eau",       emoji: "🚂",  couleur: "#ced4da", vitesse: 4,  bizarre: 2,  pollution: 4, bruit: 6,
+    phrase: "Le grand classique des machines à vapeur. Il faut juste une bonne chaudière… et un peu de chance." },
+  { id: "vapeur-riz",  nom: "Vapeur de riz",      emoji: "🍚",   couleur: "#fff3b0", vitesse: 3,  bizarre: 4,  pollution: 0, bruit: 4,
+    phrase: "La même vapeur qu'une vraie machine, mais en version dîner." },
+  { id: "foudre",      nom: "Foudre capturée",    emoji: "🌩️",  couleur: "#c77dff", vitesse: 9,  bizarre: 6,  pollution: 0, bruit: 5,
+    phrase: "On l'a attrapée dans des bocaux. Ne pas toucher pendant un orage." },
+  { id: "unicorne",    nom: "Larmes d'unicorne",  emoji: "🦄",   couleur: "#ffd6ff", vitesse: 8,  bizarre: 10, pollution: 0, bruit: 0,
+    phrase: "Chaque larme rend 3 % plus rapide. Les 97 % restants sont de la fierté." },
+  { id: "grand-maman", nom: "Amour de grand-maman", emoji: "❤️", couleur: "#ffb3c6", vitesse: 4,  bizarre: 6,  pollution: 0, bruit: 0,
+    phrase: "Chaleur constante à 36,5 °C exactement. Ne jamais épuiser cette source." },
+  { id: "pate",        nom: "Pâté en croûte",     emoji: "🥧",   couleur: "#ffd8a8", vitesse: 2,  bizarre: 7,  pollution: 1, bruit: 2,
+    phrase: "La croûte explose en petits feux d'artifice. La voiture devient croustillante." },
+  { id: "banane",      nom: "Banane",             emoji: "🍌",   couleur: "#fff9b0", vitesse: 3,  bizarre: 5,  pollution: 0, bruit: 1,
+    phrase: "Le moteur devient glissant. Le frein aussi. Le siège, surtout." },
+  { id: "dino",        nom: "Cœur de dinosaure",  emoji: "🦖",   couleur: "#80ed99", vitesse: 7,  bizarre: 8,  pollution: 2, bruit: 5,
+    phrase: "Fossile, mais encore battant. On n'a pas posé de questions." },
+  { id: "wifi",        nom: "Wi-Fi du voisin",    emoji: "📶",   couleur: "#d0f4de", vitesse: 3,  bizarre: 8,  pollution: 0, bruit: 0,
+    phrase: "Elle roule sur le réseau du voisin. Il ne s'en est toujours pas aperçu." },
+  { id: "cafe",        nom: "Café",               emoji: "☕",   couleur: "#a98467", vitesse: 5,  bizarre: 3,  pollution: 0, bruit: 3,
+    phrase: "Rend la voiture nerveuse. Exactement comme un humain qui a pris trois cafés." },
+  { id: "pizza",       nom: "Pizza trop chaude",  emoji: "🍕",   couleur: "#ffadad", vitesse: 4,  bizarre: 5,  pollution: 0, bruit: 2,
+    phrase: "L'huile fait des bulles, la sauce pimente l'échappement." },
+  { id: "elastique",   nom: "Bandes élastiques",  emoji: "🎈",   couleur: "#cdb4db", vitesse: 2,  bizarre: 3,  pollution: 0, bruit: 1,
+    phrase: "Il faut tirer le moteur par le pot d'échappement. C'est du sport." },
+  { id: "magie",       nom: "Magie",              emoji: "🪄",   couleur: "#e2a6ff", vitesse: 6,  bizarre: 9,  pollution: 0, bruit: 0,
+    phrase: "Il suffit de dire « vroom ». Le moteur dit « vroom » et roule." },
+  { id: "rires",       nom: "Rires d'enfants",    emoji: "😂",   couleur: "#ffec99", vitesse: 3,  bizarre: 4,  pollution: 0, bruit: 4,
+    phrase: "Plus on rit, plus elle va vite. Le copilote doit être très drôle." },
+  { id: "mystere",     nom: "Boîte mystère",      emoji: "❓",   couleur: "#dee2e6", vitesse: 0,  bizarre: 0,  pollution: 0, bruit: 0, mystere: true,
+    phrase: "On ne savait pas ce qu'il y avait dedans. Il y avait ça." },
+];
+
+const PAR_ID = new Map(SOURCES.map((s) => [s.id, s]));
+const SOURCES_REELLES = SOURCES.filter((s) => !s.mystere);
+
+const ADVERSAIRES = [
+  { nom: "La voiture de Kevin",    emoji: "🚙" },
+  { nom: "Le taxi du grand-père",  emoji: "🚕" },
+  { nom: "Le bus de cantine",      emoji: "🚌" },
+  { nom: "La fourgonnette de Maman", emoji: "🚐" },
+  { nom: "Un tracteur un peu lent", emoji: "🚜" },
+  { nom: "La moto du facteur",     emoji: "🏍️" },
+];
+
+const PHRASES_INTRO = "Bienvenue au garage ! Glisse une énergie (ou trois) dans les fiches, puis appuie sur LANCE. Bizarre, c'est autorisé. Bizarre, c'est même recommandé.";
+const PHRASES_MOTEUR_VIDE = [
+  "Il faut au moins une énergie ! Même une banane, ça marche.",
+  "Le moteur est vide. Une voiture vide, ça ne va nulle part.",
+  "Glisse-moi une énergie : je suis une mécanicienne, pas une devinette.",
+];
+const PHRASES_DEPART = [
+  "En avant, tout le monde !",
+  "Accroche-toi !",
+  "C'est parti !",
+  "Fonce, petite machine !",
+];
+const PHRASES_VIDAGE = [
+  "Tableau propre. Un jour, ce sera le moteur de vos rêves.",
+  "Tout est retourné sur l'établi. Le garage respire.",
+];
+const PHRASES_MYSTERE = [
+  "Oh. J'avais pourtant dit : ne pas ouvrir.",
+  "La boîte a choisi. Nous, on ne choisit pas, on roule.",
+  "Personne ne sait d'où vient cette énergie. Personne ne posera de questions.",
+];
+const PHRASES_RETOUR = [
+  "Retournée sur l'établi, sagement.",
+  "Retour à l'établi. Elle ne se plaindra pas.",
+];
+
+/* ============================================================
+   2. L'etat
+   ============================================================ */
+
+const fichesEtat = [null, null, null]; // ids de sources, ou null
+let mute = lireMemoire("mf-mute") === "1";
+let record = parseInt(lireMemoire("mf-record") || "0", 10) || 0;
+let courseEnCours = false;
+let trainee = null; // { id, origineFiche, origine, x0, y0, typeEcran, active, fantome }
+
+function lireMemoire(cle) {
+  try { return localStorage.getItem(cle); } catch (_) { return null; }
+}
+function ecrireMemoire(cle, valeur) {
+  try { localStorage.setItem(cle, valeur); } catch (_) {}
+}
+function choisis(liste) {
+  return liste[Math.floor(Math.random() * liste.length)];
+}
+function sourceParId(id) {
+  return id ? PAR_ID.get(id) : null;
+}
+function sourceAleatoire() {
+  return choisis(SOURCES_REELLES);
+}
+function fmt(t) {
+  return t.toFixed(2).replace(".", ",");
+}
+
+/* ============================================================
+   3. Les sons (WebAudio, aucun fichier)
+   ============================================================ */
+
+let contexteAudio = null;
+let nœudHum = null;
+
+function assureAudio() {
+  if (contexteAudio) return contexteAudio;
+  const AC = window.AudioContext || window.webkitAudioContext;
+  if (!AC) return null;
+  contexteAudio = new AC();
+  if (contexteAudio.state === "suspended") contexteAudio.resume();
+  return contexteAudio;
+}
+
+function demarreHum() {
+  if (mute || nœudHum) return;
+  const ctx = assureAudio();
+  if (!ctx) return;
+  const osc1 = ctx.createOscillator();
+  const osc2 = ctx.createOscillator();
+  const filtre = ctx.createBiquadFilter();
+  const gain = ctx.createGain();
+  osc1.type = "sawtooth";  osc1.frequency.value = 60;
+  osc2.type = "triangle";  osc2.frequency.value = 40;
+  filtre.type = "lowpass"; filtre.frequency.value = 260;
+  gain.gain.value = 0;
+  osc1.connect(filtre);
+  osc2.connect(filtre);
+  filtre.connect(gain);
+  gain.connect(ctx.destination);
+  osc1.start();
+  osc2.start();
+  gain.gain.setTargetAtTime(0.045, ctx.currentTime, 0.1);
+  nœudHum = { osc1, osc2, gain, ctx };
+}
+
+function arreteHum() {
+  if (!nœudHum) return;
+  const { osc1, osc2, gain, ctx } = nœudHum;
+  nœudHum = null;
+  gain.gain.setTargetAtTime(0, ctx.currentTime, 0.05);
+  setTimeout(() => { try { osc1.stop(); osc2.stop(); } catch (_) {} }, 300);
+}
+
+function ajusteHum(vitesse) {
+  if (!nœudHum) return;
+  const { osc1, osc2, ctx } = nœudHum;
+  osc1.frequency.setTargetAtTime(50 + vitesse * 5, ctx.currentTime, 0.15);
+  osc2.frequency.setTargetAtTime(35 + vitesse * 3, ctx.currentTime, 0.15);
+}
+
+function bip(frequence, duree, type, volume, delai) {
+  if (mute) return;
+  const ctx = assureAudio();
+  if (!ctx) return;
+  const t0 = ctx.currentTime + (delai || 0);
+  const osc = ctx.createOscillator();
+  const gain = ctx.createGain();
+  osc.type = type || "sine";
+  osc.frequency.value = frequence;
+  gain.gain.setValueAtTime(0.0001, t0);
+  gain.gain.exponentialRampToValueAtTime(volume || 0.15, t0 + 0.012);
+  gain.gain.exponentialRampToValueAtTime(0.0001, t0 + duree);
+  osc.connect(gain);
+  gain.connect(ctx.destination);
+  osc.start(t0);
+  osc.stop(t0 + duree + 0.05);
+}
+
+function sonPose()    { bip(340, 0.09, "sine", 0.2);  bip(210, 0.1, "sine", 0.15, 0.05); }
+function sonRetour()  { bip(210, 0.08, "sine", 0.15); bip(340, 0.09, "sine", 0.12, 0.05); }
+function sonToucher() { bip(520, 0.05, "sine", 0.08); }
+
+function sonVroom() {
+  if (mute) return;
+  const ctx = assureAudio();
+  if (!ctx) return;
+  const osc = ctx.createOscillator();
+  const gain = ctx.createGain();
+  osc.type = "sawtooth";
+  osc.frequency.setValueAtTime(55, ctx.currentTime);
+  osc.frequency.exponentialRampToValueAtTime(240, ctx.currentTime + 0.35);
+  osc.frequency.exponentialRampToValueAtTime(90, ctx.currentTime + 0.9);
+  gain.gain.setValueAtTime(0.12, ctx.currentTime);
+  gain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + 1);
+  osc.connect(gain);
+  gain.connect(ctx.destination);
+  osc.start();
+  osc.stop(ctx.currentTime + 1.05);
+}
+
+function sonVictoire() {
+  [523, 659, 784, 1047].forEach((f, i) => bip(f, 0.18, "square", 0.1, i * 0.13));
+}
+function sonDefaite() {
+  [392, 311, 247].forEach((f, i) => bip(f, 0.22, "triangle", 0.14, i * 0.18));
+}
+
+/* ============================================================
+   4. Le rendu
+   ============================================================ */
+
+function construitEtabli() {
+  const rail = document.getElementById("rail");
+  for (const s of SOURCES) {
+    const carte = document.createElement("div");
+    carte.className = "carte";
+    carte.dataset.id = s.id;
+    carte.style.background = s.couleur;
+    const e = document.createElement("div");
+    e.className = "emoji";
+    e.textContent = s.emoji;
+    const n = document.createElement("div");
+    n.className = "nom";
+    n.textContent = s.nom;
+    carte.append(e, n);
+    rail.append(carte);
+    attacheGlisser(carte, () => carte.dataset.id, -1);
   }
+  rail.addEventListener("contextmenu", (ev) => ev.preventDefault());
+}
 
-  // Les deux faces du piston, et ce qu'elles contiennent : de la vapeur vive si
-  // le tiroir admet, de la vapeur perdue s'il échappe, la même que la seconde
-  // précédente s'il est couvert — et alors elle se comprime, comme un ressort.
-  function etatCylindre({ angle, pressionAdmission, avance, recouvrement = RECOUVREMENT, scellee, volumes }) {
-    const o = ouvertures(angle, avance, recouvrement);
-    const u = Math.cos(angle);
-    const vAvant = VOLUME_CLAIR + (1 - u) / 2;
-    const vArriere = VOLUME_CLAIR + (1 + u) / 2;
-    const admetAvant = o.avant > OUVERTURE_MIN;
-    const admetArriere = o.arriere > OUVERTURE_MIN;
-    const poly = (p, vOld, vNew) => p * (vOld / vNew) ** INDICE_POLYTROPIQUE;
-    // Une face sous vapeur, une face à l'air libre, ou la vapeur de la seconde
-    // précédente qui se comprime : c'est tout le carnet d'indicateur.
-    const pressionFace = (admet, echappe, scelleeAvant, vOld, vNew) => {
-      if (admet) return pressionAdmission;
-      if (echappe) return PRESSION_AMBIANTE;
-      return poly(scelleeAvant, vOld, vNew);
-    };
-    const pAvant = pressionFace(admetAvant, o.echappeAvant, scellee.avant, volumes.avant, vAvant);
-    const pArriere = pressionFace(admetArriere, o.echappeArriere, scellee.arriere, volumes.arriere, vArriere);
-    // Le remplissage : la vapeur vive ne fait pas de magie, elle occupe la place
-    // que le piston lui libère. C'est de là que vient toute la consommation.
-    const remplissage = Math.max(0, vAvant - volumes.avant) + Math.max(0, vArriere - volumes.arriere);
-    return {
-      pAvant, pArriere, remplissage,
-      couvert: !admetAvant && !admetArriere,
-      nouveau: { scellee: { avant: pAvant, arriere: pArriere }, volumes: { avant: vAvant, arriere: vArriere } },
-    };
+function metAJourEtabli() {
+  const dansLeMoteur = new Set(fichesEtat.filter(Boolean));
+  for (const carte of document.querySelectorAll(".carte")) {
+    const s = PAR_ID.get(carte.dataset.id);
+    const cachee = dansLeMoteur.has(carte.dataset.id) && s && !s.mystere;
+    carte.classList.toggle("dans-le-moteur", cachee);
   }
+}
 
-  // Couple d'un cylindre à double effet : la différence de pression sur les deux
-  // faces, multiplicée par le bras de levier du vilebrequin.
-  function coupleMachine({
-    angle,
-    pressionAvant,
-    pressionArriere,
-    pressionAdmission,
-    avance = AVANCE_NOMINALE,
-    recouvrement = RECOUVREMENT,
-  }) {
-    const o = ouvertures(angle, avance, recouvrement);
-    // Diagramme idéal : la vapeur entre quand le tiroir admet, et le reste du
-    // temps la face respire à la pression du jour. Le détail de la compression
-    // est dans etatCylindre, qui est l'état réel de la machine.
-    const pressionFace = (ouverte, valeur) => (ouverte > OUVERTURE_MIN ? pressionAdmission : valeur);
-    const pAvant = pressionAvant ?? pressionFace(o.avant, PRESSION_AMBIANTE);
-    const pArriere = pressionArriere ?? pressionFace(o.arriere, PRESSION_AMBIANTE);
-    return FORCE_CYLINDRE * (pAvant - (1 - SECTION_TIGE) * pArriere) * Math.sin(angle);
-  }
-
-  // Le travail rendu sur chaque course d'un tour complet : c'est la définition
-  // même du double effet, et les deux doivent être positifs.
-  function travailParCourse({ pressionAdmission = 6, avance = AVANCE_NOMINALE, recouvrement = RECOUVREMENT } = {}) {
-    const N = 720;
-    let aller = 0;
-    let retour = 0;
-    for (let i = 0; i < N; i++) {
-      const angle = (2 * Math.PI * (i + 0.5)) / N;
-      const c = coupleMachine({ angle, pressionAdmission, avance, recouvrement });
-      if (i < N / 2) aller += c;
-      else retour += c;
-    }
-    return { aller: (aller * 2 * Math.PI) / N, retour: (retour * 2 * Math.PI) / N };
-  }
-
-  function appelDair({ vapeurEchappee = 0 } = {}) {
-    return 1 + 1.1 * clamp01(vapeurEchappee);
-  }
-
-  // Le piège que le jeu doit interdire par les chiffres, pas par une interdiction :
-  // faire retomber l'eau de la roue dans la pompe qui la remonte.
-  function boucleCircuitFerme({ masse = 10, hauteur = 4, rendementRoue = RENDEMENT_ROUE, rendementPompe = RENDEMENT_POMPE } = {}) {
-    return masse * GRAVITE * hauteur * (rendementRoue * rendementPompe - 1);
-  }
-
-  function nouvelEngin(ids = []) {
-    const engin = {
-      pieces: {},
-      ordre: [],
-      distance: 0,
-      charbonBrule: 0,
-      eauPompee: 0,
-      soute: 300,
-      citerne: 240,
-      propergol: 20,
-      avoine: 10,
-      travailUtile: 0,
-      tempsEcoule: 0,
-      vapeurEchappee: 0,
-      circuit: { haut: 0 },
-      chaudiere: {
-        pression: PRESSION_AMBIANTE, niveauEau: 1, soupapeSiffle: false,
-        aSec: false, danger: false, secondesEnDanger: 0,
-      },
-      machine: {
-        angle: 0, vitesseAngulaire: 0, tours: 0, cale: true, patine: false,
-        avance: AVANCE_NOMINALE, recouvrement: RECOUVREMENT, marche: 'avant',
-        scellee: { avant: PRESSION_AMBIANTE, arriere: PRESSION_AMBIANTE },
-        volumes: { avant: VOLUME_CLAIR, arriere: 1 - VOLUME_CLAIR },
-        second: {
-          scellee: { avant: PRESSION_AMBIANTE, arriere: PRESSION_AMBIANTE },
-          volumes: { avant: VOLUME_CLAIR, arriere: 1 - VOLUME_CLAIR },
-        },
-      },
-      commandes: { feu: 0, regulateur: 0, pompe: 0, circuit: 0, eolipyle: 0, fusee: 0 },
-
-      brancher(id) {
-        if (!CATALOGUE[id]) throw new Error(`Pièce inconnue au catalogue : « ${id} »`);
-        this.pieces[id] = (this.pieces[id] || 0) + 1;
-        if (!this.ordre.includes(id)) this.ordre.push(id);
-        return this;
-      },
-      // Le changement de marche renvoie l'excentrique de l'autre côté : le couple
-      // change de signe, et la machine repart en sens inverse.
-      avanceEffective() {
-        // L'avance vient de l'excentrique, et de lui seul. Sans lui le tiroir est
-        // calé droit : la vapeur n'admet qu'une fois le piston parti, et la machine
-        // reste prise à son point mort, chauffée comme on voudra.
-        if (!this.pieces.excentrique) return 0;
-        return this.machine.marche === 'arriere' ? Math.PI - this.machine.avance : this.machine.avance;
-      },
-      // Ce que les réservoirs embarqués peuvent contenir : charbon ou eau.
-      capacite(id) {
-        return (this.pieces[id] || 0) * (CATALOGUE[id]?.capacite || 0);
-      },
-      masseTotale() {
-        let m = 0.4; // le châssis
-        for (const id of this.ordre) m += CATALOGUE[id].masse * this.pieces[id];
-        return m;
-      },
-      inertie() {
-        let i = INERTIE_MACHINE;
-        for (const id of this.ordre) {
-          if (CATALOGUE[id].inertie) i += CATALOGUE[id].inertie * this.pieces[id];
-        }
-        return i + this.masseTotale() * (RAYON_ROUE / RAPPORT) ** 2;
-      },
-      vitesse() {
-        return this.machine.vitesseAngulaire * (RAYON_ROUE / RAPPORT) * (this.machine.patine ? 0.5 : 1);
-      },
-      mouvement() {
-        return Math.abs(this.machine.vitesseAngulaire) > 1e-3;
-      },
-      // Le coup de barre du chauffeur : un élan, pas un moteur. Personne ne
-      // démarre tout seul au point mort, pas même la mieux réglée des machines.
-      pousser(vitesse = 0.4) {
-        this.machine.vitesseAngulaire = this.machine.marche === 'arriere' ? -vitesse : vitesse;
-        this.machine.cale = false;
-        return this;
-      },
-      fluxEchappe() {
-        // La vapeur usée ne relève le tirage que si elle est chassée par la tuyère,
-        // dans la boîte à fumée, au-dessus du foyer.
-        if (!this.pieces.boite_a_fumee && !this.pieces.tuyere) return 0;
-        return Math.min(1, this.vapeurEchappee / 0.8);
-      },
-      bilan() {
-        return {
-          distance: this.distance,
-          charbonBrule: this.charbonBrule,
-          temps: this.tempsEcoule,
-          puissanceMoyenne: this.tempsEcoule > 0 ? this.travailUtile / this.tempsEcoule : 0,
-          rendement: this.charbonBrule > 0.01 ? this.distance / this.charbonBrule : null,
-          vitesse: this.vitesse(),
-          cale: this.machine.cale,
-        };
-      },
-    };
-    ids.forEach((id) => engin.brancher(id));
-    return engin;
-  }
-
-  // Le terrain : une pente de fond et des bosses. Une bosse se rencontre à un
-  // endroit precis du chemin, et c'est la que la machine doit son inertia.
-  function nouveauMonde({ pente = 0, riviere = false, vent = 0, charbonnage = false, circuit = null, bosses = [] } = {}) {
-    return { pente, riviere, vent, charbonnage, circuit, bosses };
-  }
-
-  function penteReelle(engin, monde) {
-    let pente = monde.pente;
-    for (const b of monde.bosses || []) {
-      if (engin.distance >= b.a && engin.distance < b.a + (b.longueur ?? 10)) pente += b.pente;
-    }
-    return pente;
-  }
-
-  // Ce que le sol oppose : roulement et pente toujours là, l'air seulement vite.
-  function forceDuSol(engin, monde, sens) {
-    const v = Math.abs(engin.vitesse());
-    return engin.masseTotale() * GRAVITE * (PENTE_ROULAGE * sens + penteReelle(engin, monde)) + AERODYNAMIQUE * v * v * sens;
-  }
-
-  // Le pas de l'écran n'est pas le pas du calcul. La vapeur comprimée est un
-  // ressort raide, et un ressort raide s'intègre mal à grands pas : la machine
-  // se met à basculer d'un bord sur l'autre au lieu de s'arrêter. Le modèle se
-  // subdivise donc lui-même, quel que soit le pas que lui apporte l'appelant.
-  const PAS_CALCUL = 1 / 480;
-
-  function pasDeTemps(engin, monde, dt) {
-    const passe = Math.min(dt, PAS_CALCUL);
-    let reste = dt;
-    while (reste > 1e-12) {
-      const d = Math.min(passe, reste);
-      pasInterne(engin, monde, d);
-      reste -= d;
-    }
-    return engin;
-  }
-
-  function pasInterne(engin, monde, dt) {
-    const c = engin.commandes;
-    const chaudiere = engin.chaudiere;
-    const machine = engin.machine;
-    const aLaMachine = Boolean(engin.pieces.cylindre);
-
-    // 1. Le feu. Son intensité dépend du tirage, donc de la vapeur usée qui passe.
-    let coupleInjecteur = 0;
-    const pression0 = chaudiere.pression;
-    const tirage = appelDair({ vapeurEchappee: engin.fluxEchappe() });
-    const peutBruler = engin.pieces.foyer && engin.soute > 0 && c.feu > 0;
-    const puissanceFoyer = peutBruler ? c.feu * PUISSANCE_FOYER * tirage : 0;
-    chaudiere.aSec = chaudiere.niveauEau <= SEUIL_EAU_BAS;
-    const eauDispo = chaudiere.aSec ? Math.max(0, chaudiere.niveauEau / SEUIL_EAU_BAS) : 1;
-    const vapeurCreee = puissanceFoyer * eauDispo * dt;
-    // L'eau bouillie doit être remplacée, et elle entre dans une chaudière sous
-    // pression : l'injecteur la pousse, et ça mange une part du travail de la
-    // machine. Une citerne vide, c'est la machine qui s'arrête — le soutage.
-    const aInjecter = Math.min(vapeurCreee, engin.citerne);
-    engin.citerne -= aInjecter;
-    engin.eauPompee += aInjecter;
-    if (aInjecter > 0) coupleInjecteur = (K_INJECTEUR * aInjecter * (pression0 - PRESSION_AMBIANTE)) / dt;
-    chaudiere.niveauEau = clamp01(chaudiere.niveauEau + (aInjecter - vapeurCreee) * EAU_PAR_MUID);
-    if (peutBruler) {
-      const charbon = Math.min(engin.soute, c.feu * CHARBON_PAR_SECOND * dt);
-      engin.soute -= charbon;
-      engin.charbonBrule += charbon;
-    }
-
-    // 2. Les deux cylindres, la distribution, et ce qu'ils avalent.
-    const omega = machine.vitesseAngulaire;
-    const avance = engin.avanceEffective();
-    const pression = chaudiere.pression;
-    const premiers = aLaMachine
-      ? etatCylindre({ angle: machine.angle, pressionAdmission: pression, avance, recouvrement: machine.recouvrement, scellee: machine.scellee, volumes: machine.volumes })
-      : null;
-    // Le second cylindre est calé au quart du tour : il pousse pendant que le
-    // premier se trouve au point mort.
-    const seconds = aLaMachine && engin.pieces.second_cylindre
-      ? etatCylindre({ angle: machine.angle + Math.PI / 2, pressionAdmission: pression, avance, recouvrement: machine.recouvrement, scellee: machine.second.scellee, volumes: machine.second.volumes })
-      : null;
-
-    const remplissage = (premiers ? premiers.remplissage : 0) + (seconds ? seconds.remplissage : 0);
-    const demande = aLaMachine
-      ? (remplissage / dt) * CONSO_PAR_VOLUME + FUITE_MACHINE * (pression - PRESSION_AMBIANTE)
-      : 0;
-    const eolipyle = engin.pieces.eolipyle ? CONSO_EOLIPYLE * clamp01(c.eolipyle) * (pression - PRESSION_AMBIANTE) : 0;
-    const conductance = engin.pieces.regulateur ? CONDUCTANCE_MAX * clamp01(c.regulateur) : CONDUCTANCE_MAX;
-    const traverse = Math.min(demande, conductance * (pression - PRESSION_AMBIANTE));
-    const reserve = ((pression - PRESSION_AMBIANTE) * CAPACITE_CHAUDIERE) / dt;
-    const prise = Math.min(traverse + eolipyle, vapeurCreee / dt + reserve);
-    const pAdm = clamp(pression - traverse / Math.max(conductance, 1e-9), PRESSION_AMBIANTE, pression);
-    engin.vapeurEchappee = prise;
-
-    // Les pressions reais de part et d'autre du piston, avec la chute au régulateur.
-    if (premiers) {
-      premiers.pAvant = premiers.pAvant > PRESSION_AMBIANTE ? pAdm : premiers.pAvant;
-      premiers.pArriere = premiers.pArriere > PRESSION_AMBIANTE ? pAdm : premiers.pArriere;
-      machine.scellee = premiers.nouveau.scellee;
-      machine.volumes = premiers.nouveau.volumes;
-    }
-    if (seconds) {
-      seconds.pAvant = seconds.pAvant > PRESSION_AMBIANTE ? pAdm : seconds.pAvant;
-      seconds.pArriere = seconds.pArriere > PRESSION_AMBIANTE ? pAdm : seconds.pArriere;
-      machine.second.scellee = seconds.nouveau.scellee;
-      machine.second.volumes = seconds.nouveau.volumes;
-    }
-    // Le ressort de la vapeur scellée s'affaisse : les segments ne sont pas étanches.
-    for (const etat of [machine, machine.second]) {
-      const s = etat.scellee;
-      s.avant += (PRESSION_AMBIANTE - s.avant) * FUITE_SEEAU * dt;
-      s.arriere += (PRESSION_AMBIANTE - s.arriere) * FUITE_SEEAU * dt;
-    }
-
-    // 3. Les sources de mouvement, la machine comprise.
-    let couple = 0;
-    if (premiers) {
-      couple += coupleMachine({ angle: machine.angle, pressionAvant: premiers.pAvant, pressionArriere: premiers.pArriere });
-    }
-    if (seconds) {
-      couple += coupleMachine({
-        angle: machine.angle + Math.PI / 2,
-        pressionAvant: seconds.pAvant,
-        pressionArriere: seconds.pArriere,
-        avance: 0,
-      });
-    }
-    if (engin.pieces.eolipyle) couple += K_EOLIPYLE * eolipyle;
-    if (engin.pieces.eolienne) couple += K_EOLIENNE * monde.vent;
-
-    let forceChassis = 0;
-    if (engin.pieces.voile) forceChassis += K_VOILE * monde.vent;
-    if (engin.pieces.cheval && engin.avoine > 0) {
-      const avoine = Math.min(engin.avoine, 0.05 * dt);
-      engin.avoine -= avoine;
-      if (avoine > 0) forceChassis += FORCE_CHEVAL;
-    }
-    if (engin.pieces.fusee && engin.propergol > 0 && c.fusee > 0) {
-      // Seule exception assumée à la comptabilité : la fusée pousse le châssis
-      // directement, sans arbre ni roue. Elle mange son propergol, et rien d'autre.
-      const brule = Math.min(engin.propergol, c.fusee * 0.4 * dt);
-      engin.propergol -= brule;
-      forceChassis += POUSSEE_FUSEE * (brule / (c.fusee * 0.4 * dt || 1));
-    }
-
-    // 4. La rivière, et le piège du circuit qui se nourrit lui-même.
-    const hauteurCircuit = monde.circuit ? monde.circuit.hauteur : 0;
-    if (engin.pieces.roue_a_eau) {
-      // Une roue à eau ne prend que ce que le courant veut bien lui donner :
-      // à mesure qu'elle tourne vite, l'eau lui échappe.
-      const glissement = clamp01(1 - (Math.abs(omega) * RAYON_ROUE_A_EAU) / V_COURANT);
-      const debitBassin = Math.min(DEBIT_CIRCUIT, Math.max(0, engin.circuit.haut) / dt);
-      const chute = (monde.riviere ? DEBIT_RIVIERE * CHUTE_RIVIERE : 0) + debitBassin * hauteurCircuit;
-      couple += K_ROUE_A_EAU * chute * RENDEMENT_ROUE * glissement;
-      if (debitBassin > 0) engin.circuit.haut = Math.max(0, engin.circuit.haut - debitBassin * dt);
-    }
-    // En mode circuit, la pompe reprend l'eau qui est tombée : la même, toujours
-    // la même. Rien de neuf n'entre, et c'est tout le problème.
-    // Une pompe entraînée à l'envers ne remonte rien : elle ne rend donc pas de
-    // travail non plus. Sans cette précaution, un montage à l'envers créerait de l'eau.
-    if (engin.pieces.pompe && c.pompe > 0 && omega > 1e-3) {
-      // Deux usages, un seul coût : remonter l'eau du bassin (le piège du circuit
-      // fermé), ou puiser à la rivière pour remplir la citerne — le soutage.
-      const puiser = c.circuit <= 0 && monde.riviere;
-      const hauteur = c.circuit > 0 ? hauteurCircuit : HAUSSE_CHAUDIERE;
-      if (hauteur > 0 && (c.circuit > 0 || puiser)) {
-        const debitPompe = CAP_POMPE * clamp01(c.pompe);
-        couple -= (K_POMPE * debitPompe * hauteur) / RENDEMENT_POMPE;
-        engin.eauPompee += debitPompe * dt;
-        if (c.circuit > 0) {
-          engin.circuit.haut += debitPompe * dt;
-        } else {
-          const place = Math.max(0, engin.capacite('citerne') - engin.citerne);
-          engin.citerne += Math.min(place, debitPompe * dt);
-        }
-      }
-    }
-
-    // 5. Ce que le sol et la gravité reprennent.
-    const sens = omega !== 0 ? Math.sign(omega) : Math.sign(couple);
-    const coupleSol = (forceDuSol(engin, monde, sens || 1) * RAYON_ROUE) / RAPPORT;
-    const adhesion = (ADHERENCE * engin.masseTotale() * GRAVITE * POIDS_MOTEUR * RAYON_ROUE) / RAPPORT;
-    machine.patine = Math.abs(coupleSol) > adhesion;
-    const coupleEffectifSol = machine.patine ? Math.sign(coupleSol) * adhesion : coupleSol;
-    const coupleChassis = (forceChassis * RAYON_ROUE) / RAPPORT;
-
-    // La machine porte ses paliers : frotter coute a tous les regimes.
-    const frottementArbre = (engin.pieces.cylindre ? FROTTEMENT_ARBRE : FROTTEMENT_ARBRE * 0.3) * omega;
-    let net = couple + coupleChassis - coupleInjecteur - coupleEffectifSol - frottementArbre;
-    // Une machine qui ne fait plus de tours est une machine calée, quitte à ce
-    // qu'elle oscille encore d'un bord sur l'autre sous la vapeur comprimée.
-    const VITESSE_CALE = 0.15;
-    if (Math.abs(omega) < 1e-4) {
-      const chargeAuRepos = (engin.masseTotale() * GRAVITE * (PENTE_ROULAGE + Math.max(0, penteReelle(engin, monde))) * RAYON_ROUE) / RAPPORT;
-      const seuil = FROTTEMENT_STATIQUE + Math.abs(chargeAuRepos);
-      machine.cale = Math.abs(net) <= seuil;
-      if (machine.cale) net = 0;
+function metAJourFiches() {
+  const fiches = document.querySelectorAll(".fiche");
+  fiches.forEach((fiche, i) => {
+    const s = sourceParId(fichesEtat[i]);
+    fiche.classList.toggle("pleine", !!s);
+    if (s) {
+      fiche.style.background = s.couleur;
+      fiche.replaceChildren();
+      const e = document.createElement("div");
+      e.className = "emoji";
+      e.textContent = s.emoji;
+      const n = document.createElement("div");
+      n.className = "nom";
+      n.textContent = s.nom;
+      fiche.append(e, n);
     } else {
-      machine.cale = Math.abs(omega) < VITESSE_CALE;
+      fiche.style.background = "";
+      fiche.replaceChildren();
+      const e = document.createElement("div");
+      e.className = "emoji";
+      e.textContent = "❔";
+      const n = document.createElement("div");
+      n.className = "nom";
+      n.textContent = "fiche " + (i + 1);
+      fiche.append(e, n);
     }
+  });
+}
 
-    // 6. On avance le temps, et on tient les comptes.
-    machine.vitesseAngulaire += (net / engin.inertie()) * dt;
-    machine.angle = (machine.angle + machine.vitesseAngulaire * dt) % (2 * Math.PI);
-    if (machine.angle < 0) machine.angle += 2 * Math.PI;
-    machine.tours += Math.abs(machine.vitesseAngulaire * dt) / (2 * Math.PI);
-    engin.distance += engin.vitesse() * dt;
-    engin.travailUtile += Math.max(0, couple * omega) * dt;
-    engin.tempsEcoule += dt;
-
-    // L'eau ne part qu'une fois : elle manque au niveau dès qu'elle est vaporisée.
-    chaudiere.pression += (vapeurCreee - (prise + FUITE_CHAUDIERE * (pression - PRESSION_AMBIANTE)) * dt) / CAPACITE_CHAUDIERE;
-    // La vapeur qu'on ne soutire pas s'enfuit par la soupape : elle a coûté du
-    // charbon et n'a rien fait tourner. C'est toute la conduite sobre du jeu.
-    const plafond = engin.pieces.soupape ? PRESSION_SOUPAPE : PRESSION_MAX;
-    chaudiere.soupapeSiffle = chaudiere.pression > plafond;
-    if (chaudiere.soupapeSiffle) chaudiere.pression = plafond;
-    chaudiere.pression = clamp(chaudiere.pression, PRESSION_AMBIANTE, PRESSION_MAX);
-    // Sans soupape, la tôle travaille : le rendu en fera la scène comique (Q11),
-    // le modèle se contente de dire depuis combien de temps c'est dangereux.
-    chaudiere.danger = !engin.pieces.soupape && chaudiere.pression > PRESSION_SOUPAPE;
-    chaudiere.secondesEnDanger = chaudiere.danger ? chaudiere.secondesEnDanger + dt : 0;
-    return engin;
+function calculeStats() {
+  const stats = { vitesse: 0, bizarre: 0, pollution: 0, bruit: 0, nombre: 0 };
+  for (const id of fichesEtat) {
+    const s = sourceParId(id);
+    if (!s || s.mystere) continue;
+    stats.vitesse += s.vitesse;
+    stats.bizarre += s.bizarre;
+    stats.pollution += s.pollution;
+    stats.bruit += s.bruit;
+    stats.nombre++;
   }
+  return stats;
+}
 
-  function simuler(engin, monde, { duree = 1, pas = 1 / 120, distanceCible = null } = {}) {
-    let t = 0;
-    while (t < duree) {
-      pasDeTemps(engin, monde, pas);
-      t += pas;
-      if (distanceCible !== null && Math.abs(engin.distance) >= distanceCible) break;
+function definitJauge(cle, valeur, max) {
+  document.getElementById("barre-" + cle).style.width = Math.min(100, (valeur / max) * 100) + "%";
+  document.getElementById("val-" + cle).textContent = valeur;
+}
+
+function metAJourJauges(stats) {
+  definitJauge("vitesse", stats.vitesse, 30);
+  definitJauge("bizarre", stats.bizarre, 30);
+  definitJauge("pollution", stats.pollution, 30);
+  definitJauge("bruit", stats.bruit, 30);
+}
+
+function metAJourVoiture(stats) {
+  const piste = document.getElementById("piste");
+  const voiture = document.getElementById("voiture");
+  const bande = document.getElementById("bande");
+  const fumee = document.getElementById("fumee");
+  const flamme = document.getElementById("flamme");
+  const etincelles = document.getElementById("etincelles");
+
+  if (stats.vitesse > 0) {
+    voiture.classList.add("marche");
+    bande.style.animationPlayState = "running";
+    piste.style.setProperty("--duree-route", Math.max(0.15, 1.5 - stats.vitesse * 0.042).toFixed(2) + "s");
+  } else {
+    voiture.classList.remove("marche");
+    bande.style.animationPlayState = "paused";
+  }
+  voiture.classList.toggle("fou", stats.bizarre >= 12);
+  fumee.classList.toggle("affichee", stats.vitesse > 0);
+  fumee.classList.toggle("noire", stats.pollution >= 12);
+  fumee.classList.toggle("clare", stats.pollution < 6 && stats.vitesse > 0);
+  flamme.classList.toggle("affichee", stats.vitesse >= 20);
+  etincelles.classList.toggle("affichee", stats.bizarre >= 12);
+}
+
+function metAJourTout() {
+  const stats = calculeStats();
+  metAJourEtabli();
+  metAJourFiches();
+  metAJourJauges(stats);
+  metAJourVoiture(stats);
+  document.getElementById("record").textContent = "Record : " + record;
+  if (stats.nombre > 0) demarreHum();
+  else arreteHum();
+  ajusteHum(stats.vitesse);
+}
+
+function braise(texte) {
+  document.getElementById("braise-texte").textContent = "💬 Braise : " + texte;
+}
+
+function secoueMoteur() {
+  const m = document.getElementById("moteur");
+  m.classList.remove("secoue");
+  void m.offsetWidth; // relance l'animation
+  m.classList.add("secoue");
+}
+
+/* ============================================================
+   5. Le glisser-deposer (pointeur : doigt, stylet, souris)
+   ============================================================ */
+
+function attacheGlisser(el, obtientId, origineFiche) {
+  el.addEventListener("pointerdown", (e) => {
+    if (courseEnCours) return;
+    const id = obtientId();
+    if (!id) return; // fiche vide : rien a faire
+    e.preventDefault();
+    trainee = {
+      id,
+      origineFiche,
+      origine: el,
+      x0: e.clientX,
+      y0: e.clientY,
+      typeEcran: e.pointerType || "mouse",
+      active: false,
+      fantome: null,
+    };
+    try { el.setPointerCapture(e.pointerId); } catch (_) {}
+  });
+}
+
+function demarreFantome(e) {
+  const fantome = trainee.origine.cloneNode(true);
+  fantome.classList.add("fantome");
+  document.body.append(fantome);
+  trainee.active = true;
+  trainee.fantome = fantome;
+  deplaceFantome(e.clientX, e.clientY);
+  sonToucher();
+}
+
+function deplaceFantome(x, y) {
+  const f = trainee && trainee.fantome;
+  if (f) { f.style.left = x + "px"; f.style.top = y + "px"; }
+}
+
+function surligneFiche(x, y) {
+  nettoieCibles();
+  const el = document.elementFromPoint(x, y);
+  const fiche = el ? el.closest(".fiche") : null;
+  if (fiche) fiche.classList.add("cible");
+}
+
+function nettoieCibles() {
+  for (const f of document.querySelectorAll(".fiche.cible")) f.classList.remove("cible");
+}
+
+function surBouge(e) {
+  if (!trainee) return;
+  const dx = e.clientX - trainee.x0;
+  const dy = e.clientY - trainee.y0;
+  if (!trainee.active) {
+    if (trainee.origineFiche === -1 && trainee.typeEcran === "touch") {
+      // doigt sur l'etabli : on ne debute que sur un mouvement nettement
+      // vertical (l'horizontale appartient au deroulement de la rangée)
+      if (Math.abs(dy) > 14 && Math.abs(dy) > Math.abs(dx)) demarreFantome(e);
+    } else if (Math.hypot(dx, dy) > 10) {
+      demarreFantome(e);
     }
-    return engin.bilan();
+    return;
   }
+  deplaceFantome(e.clientX, e.clientY);
+  surligneFiche(e.clientX, e.clientY);
+}
 
-  const modeleVapeur = {
-    CATALOGUE,
-    PRESSION_MAX,
-    PRESSION_AMBIANTE,
-    AVANCE_NOMINALE,
-    RECOUVREMENT,
-    nouvelEngin,
-    nouveauMonde,
-    penteReelle,
-    pasDeTemps,
-    simuler,
-    coupleMachine,
-    ouvertures,
-    etatCylindre,
-    travailParCourse,
-    appelDair,
-    boucleCircuitFerme,
+function surRelache(e) {
+  if (!trainee) return;
+  const t = trainee;
+  trainee = null;
+  nettoieCibles();
+
+  if (t.active) {
+    const el = document.elementFromPoint(e.clientX, e.clientY);
+    const ficheEl = el ? el.closest(".fiche") : null;
+    if (t.fantome) t.fantome.remove();
+
+    if (ficheEl) {
+      const index = parseInt(ficheEl.dataset.fiche, 10);
+      if (index !== t.origineFiche) placeSource(t.id, index, t.origineFiche);
+    } else if (t.origineFiche !== -1) {
+      fichesEtat[t.origineFiche] = null; // retour a l'etabli
+      braise(choisis(PHRASES_RETOUR));
+      sonRetour();
+      metAJourTout();
+    }
+  } else if (t.origineFiche !== -1) {
+    // tap sur une fiche pleine : l'energie retourne a l'etabli
+    fichesEtat[t.origineFiche] = null;
+    braise(choisis(PHRASES_RETOUR));
+    sonRetour();
+    metAJourTout();
+  } else {
+    // tap sur une carte de l'etabli : Braise la presente
+    const s = sourceParId(t.id);
+    if (s) {
+      braise(s.phrase);
+      t.origine.classList.add("tape");
+      setTimeout(() => t.origine.classList.remove("tape"), 380);
+      sonToucher();
+    }
+  }
+}
+
+window.addEventListener("pointermove", surBouge);
+window.addEventListener("pointerup", surRelache);
+window.addEventListener("pointercancel", () => {
+  if (!trainee) return;
+  if (trainee.fantome) trainee.fantome.remove();
+  trainee = null;
+  nettoieCibles();
+});
+
+function placeSource(id, index, origineFiche) {
+  let reelId = id;
+  let preface = "";
+  if (PAR_ID.get(id) && PAR_ID.get(id).mystere) {
+    reelId = sourceAleatoire().id;
+    preface = choisis(PHRASES_MYSTERE) + " ";
+  }
+  fichesEtat[index] = reelId;
+  if (origineFiche !== -1) fichesEtat[origineFiche] = null;
+  metAJourTout();
+  sonPose();
+  const s = sourceParId(reelId);
+  braise(preface + s.phrase);
+}
+
+/* ============================================================
+   6. La course
+   ============================================================ */
+
+function positionneVoiture(el, progression) {
+  el.style.left = (2 + progression * 84) + "%";
+}
+
+function lanceCourse(stats) {
+  courseEnCours = true;
+  braise(choisis(PHRASES_DEPART));
+
+  const adverse = choisis(ADVERSAIRES);
+  const dureeJoueur = Math.min(9, Math.max(2.6, 52 / stats.vitesse));
+  const dureeAdverse = 3.2 + Math.random() * 5.5;
+
+  const voitureJoueur = document.getElementById("voiture-course");
+  const voitureAdversaire = document.getElementById("voiture-adversaire");
+  voitureJoueur.textContent = "🚗";
+  voitureAdversaire.textContent = adverse.emoji;
+
+  const mini = fichesEtat
+    .filter(Boolean)
+    .map((id) => { const s = sourceParId(id); return s ? s.emoji : ""; })
+    .join(" ");
+  document.getElementById("etiquette-joueur").textContent = "TOI  " + mini;
+  document.getElementById("etiquette-adversaire").textContent = adverse.nom;
+
+  positionneVoiture(voitureJoueur, 0);
+  positionneVoiture(voitureAdversaire, 0);
+  document.getElementById("temps-course").textContent = "0,00 s";
+  document.getElementById("voile-course").classList.remove("cache");
+
+  sonVroom();
+  ajusteHum(stats.vitesse * 1.6);
+
+  const depart = performance.now();
+  const durer = (now) => {
+    const t = (now - depart) / 1000;
+    const pJ = Math.min(1, t / dureeJoueur);
+    const pA = Math.min(1, t / dureeAdverse);
+    positionneVoiture(voitureJoueur, pJ);
+    positionneVoiture(voitureAdversaire, pA);
+    document.getElementById("temps-course").textContent = fmt(t) + " s";
+    if (pJ < 1 && pA < 1) {
+      requestAnimationFrame(durer);
+    } else {
+      setTimeout(() => finCourse(stats, dureeJoueur, dureeAdverse, dureeJoueur <= dureeAdverse), 600);
+    }
   };
-  return modeleVapeur;
-})();
-// ===== MODELE : FIN =====
-  </script>
+  requestAnimationFrame(durer);
+}
+
+function finCourse(stats, tempsJoueur, tempsAdverse, gagne) {
+  courseEnCours = false;
+  ajusteHum(stats.vitesse);
+
+  const score = Math.max(
+    0,
+    stats.vitesse * 10 + stats.bizarre * 7 - stats.pollution * 3 - stats.bruit * 2
+  );
+  const nouveauRecord = score > record;
+  if (nouveauRecord) {
+    record = score;
+    ecrireMemoire("mf-record", String(record));
+  }
+
+  const verdict = choisisVerdict(stats);
+  let emojiRes = verdict.emoji;
+  if (gagne) emojiRes = nouveauRecord ? "🏆" : "🎉";
+  document.getElementById("res-emoji").textContent = emojiRes;
+  document.getElementById("res-titre").textContent = (gagne ? "VICTOIRE ! " : "DÉFAITE… mais ") + verdict.titre;
+  document.getElementById("res-texte").textContent = verdict.texte;
+  const resTemps = document.getElementById("res-temps");
+  resTemps.replaceChildren();
+  const gras = (texte) => {
+    const b = document.createElement("b");
+    b.textContent = texte;
+    return b;
+  };
+  resTemps.append("Ton temps : ", gras(fmt(tempsJoueur) + " s"), " · Adversaire : ", gras(fmt(tempsAdverse) + " s"));
+  document.getElementById("res-score").textContent = "Score farfelu : " + score;
+  document.getElementById("res-record").textContent =
+    nouveauRecord ? "🌟 NOUVEAU RECORD DU GARAGE !" : "Record du garage : " + record;
+  document.getElementById("voile-resultat").classList.remove("cache");
+
+  if (gagne) { confettis(); sonVictoire(); } else { sonDefaite(); }
+  metAJourTout();
+}
+
+function choisisVerdict(stats) {
+  if (stats.bizarre >= 20) return {
+    emoji: "🌀", titre: "MACHINE À RÊVER",
+    texte: "La voiture ne va plus nulle part : elle va ailleurs. Elle a vu trois lunes et une pizza volante.",
+  };
+  if (stats.vitesse >= 24 && stats.bizarre >= 8) return {
+    emoji: "🚀", titre: "MONSTRE LÉGENDAIRE",
+    texte: "La voiture a arraché une étoile en passant. Le garage a fondu. C'est superbe.",
+  };
+  if (stats.vitesse >= 24) return {
+    emoji: "⚡", titre: "CHAMPION DE L'ASPHALTE",
+    texte: "Vite, propre, efficace. Les adultes sont un peu jaloux.",
+  };
+  if (stats.pollution >= 16) return {
+    emoji: "☁️", titre: "NUAGE OFFICIEL",
+    texte: "La voiture laisse un petit nuage noir derrière elle. Les mouettes ont porté plainte.",
+  };
+  if (stats.bruit >= 16) return {
+    emoji: "🔊", titre: "TROOUM OFFICIEL",
+    texte: "Le voisin a emmené son chien chez sa sœur. Il a dit « la météo ». Il mentait.",
+  };
+  if (stats.vitesse < 8) return {
+    emoji: "🐢", titre: "TORTUE D'HONNEUR",
+    texte: "Elle avance. Lentement, fièrement. Le bus de cantine pleure.",
+  };
+  return {
+    emoji: "👍", titre: "BONNE VIEILLE MACHINE",
+    texte: "Ni trop sérieuse, ni trop farfelue. Elle fait son travail et ça va.",
+  };
+}
+
+function confettis() {
+  const couleurs = ["#ff8c1a", "#e63946", "#4361ee", "#2a9d8f", "#ffd166", "#c77dff"];
+  for (let i = 0; i < 80; i++) {
+    const c = document.createElement("i");
+    c.className = "confetti";
+    c.style.left = Math.random() * 100 + "vw";
+    c.style.background = couleurs[i % couleurs.length];
+    c.style.setProperty("--d", (1.6 + Math.random() * 1.6).toFixed(2) + "s");
+    c.style.animationDelay = (Math.random() * 0.5).toFixed(2) + "s";
+    document.body.append(c);
+    setTimeout(() => c.remove(), 4200);
+  }
+}
+
+/* ============================================================
+   7. Les boutons
+   ============================================================ */
+
+function attacheBoutons() {
+  document.getElementById("bouton-go").addEventListener("click", () => {
+    if (courseEnCours) return;
+    const stats = calculeStats();
+    if (stats.nombre === 0) {
+      braise(choisis(PHRASES_MOTEUR_VIDE));
+      secoueMoteur();
+      return;
+    }
+    lanceCourse(stats);
+  });
+
+  document.getElementById("bouton-vider").addEventListener("click", () => {
+    if (courseEnCours) return;
+    if (fichesEtat.every((f) => f === null)) {
+      braise("Il n'y a rien à vider !");
+      return;
+    }
+    fichesEtat[0] = fichesEtat[1] = fichesEtat[2] = null;
+    braise(choisis(PHRASES_VIDAGE));
+    metAJourTout();
+  });
+
+  document.getElementById("bouton-revoir").addEventListener("click", () => {
+    document.getElementById("voile-resultat").classList.add("cache");
+  });
+
+  document.getElementById("bouton-nouveau").addEventListener("click", () => {
+    fichesEtat[0] = fichesEtat[1] = fichesEtat[2] = null;
+    document.getElementById("voile-resultat").classList.add("cache");
+    braise(choisis(PHRASES_VIDAGE));
+    metAJourTout();
+  });
+
+  const boutonSon = document.getElementById("bouton-son");
+  boutonSon.textContent = mute ? "🔇" : "🔊";
+  boutonSon.addEventListener("click", () => {
+    mute = !mute;
+    ecrireMemoire("mf-mute", mute ? "1" : "0");
+    boutonSon.textContent = mute ? "🔇" : "🔊";
+    if (mute) arreteHum();
+  });
+
+  // les fiches du moteur
+  for (const fiche of document.querySelectorAll(".fiche")) {
+    const index = parseInt(fiche.dataset.fiche, 10);
+    attacheGlisser(fiche, () => fichesEtat[index], index);
+  }
+}
+
+/* ============================================================
+   8. Demarrage
+   ============================================================ */
+
+construitEtabli();
+attacheBoutons();
+metAJourTout();
+braise(PHRASES_INTRO);
+</script>
 </body>
 </html>
