@@ -20,47 +20,56 @@ Ce qu'on regarde à l'œil : **le mot de la pastille ne doit pas clignoter**. Il
 
 ## 2. Ses vingt-deux phrases
 
+Elle ne dit **que** ces vingt-deux-là : le code n'en prononce pas d'autre, et rien de tout cela
+n'est recopié du côté de la projection — une promesse le vérifie ligne à ligne.
+
 Trois questions par ligne, à cocher à la main : le mot est-il juste ? un enfant de dix ans le comprend-il sans dictionnaire ? est-ce encore une constatation, pas une leçon ni un ordre ?
 
 **Les sept situations**
 
 |Clefréelle|Phrase|juste|dix ans|pas une leçon|
 |---|---|---|---|---|
-|cale|Elle a calé : la manivelle est prise à un point mort.|| | |
-|souffle|Elle souffle : la vapeur part sans pousser.|| | |
-|sec|Elle est à sec : plus d'eau dans la chaudière.|| | |
-|patine|Ça patine : les roues tournent, le sol ne donne rien.|| | |
-|danger|La tôle travaille : il manque une soupape.|| | |
-|roule|Elle roule.|| | |
-|arret|Elle est à l'arrêt.|| | |
+|danger|La tôle travaille : la vapeur n’a plus rien pour la rendre.| | | |
+|sec|La chaudière est à sec : l’eau ne revient pas jusqu’à elle.| | | |
+|arret|Rien ne tourne plus : le feu ne pousse pas la machine.| | | |
+|cale|Elle est prise à son point mort : la vapeur comprimée la retient.| | | |
+|patine|L’acier glisse sur l’acier : la vapeur part en tours à vide.| | | |
+|souffle|La soupape souffle : le foyer a brûlé du charbon pour rien.| | | |
+|roule|Elle roule : la vapeur pousse et les roues la prennent.| | | |
 
 **Les deux faits neufs**
 
 |Clefréelle|Phrase|juste|dix ans|pas une leçon|
 |---|---|---|---|---|
-|tatonne|Elle tâtonne : la vapeur la pousse d'un côté, le point mort la retient de l'autre.|| | |
-|barre_echappee|La barre échappe : la manivelle va trop vite pour les mains.|| | |
+|tatonne|Elle tâtonne : la vapeur la pousse d’un côté, le point mort la retient de l’autre.| | | |
+|barre_echappee|La barre échappe : la manivelle tourne plus vite que les bras.| | | |
 
-**Les treize pièces** qu'on peut emporter, et une récompense
+**Les treize pièces** qu'on peut emporter
 
 |Pièce|Phrase|juste|dix ans|pas une leçon|
 |---|---|---|---|---|
-|chaudière|Plus de chaudière : la vapeur ne se fabrique plus.| | | |
-|foyer|Plus de foyer : rien ne chauffe l'eau.| | | |
-|soute|Plus de soute : le feu n'a plus rien à manger.| | | |
-|citerne|Plus de citerne : plus d'eau à vaporiser.| | | |
-|cylindre|Plus de cylindre : la vapeur n'a plus où pousser.| | | |
-|tiroir|Plus de tiroir : la vapeur entre des deux côtés à la fois.| | | |
-|excentrique|Plus d'excentrique : le tiroir ne reçoit plus son avance.| | | |
-|crosse|Plus de crosse : l'aller-retour du piston ne se transmet plus.| | | |
+|chaudiere|Plus de chaudière : la vapeur n’a plus où naître.| | | |
+|foyer|Plus de foyer : plus rien ne chauffe l’eau.| | | |
+|soute|Plus de soute : le feu ne trouve plus de charbon à manger.| | | |
+|citerne|Plus de citerne : l’eau n’a plus où attendre la chaudière.| | | |
+|cylindre|Plus de cylindre : la vapeur n’a rien à pousser.| | | |
+|tiroir|Plus de tiroir : la vapeur ne sait plus par où entrer.| | | |
+|excentrique|Plus d’excentrique : le tiroir ne reçoit plus son avance.| | | |
+|crosse|Plus de crosse : l’aller-retour du piston ne se transmet plus.| | | |
 |bielle|Plus de bielle : le piston pousse pour personne.| | | |
-|régulateur|Le régulateur est à terre : la vapeur passe sans être dosée.| | | |
+|regulateur|Le régulateur est à terre : la vapeur passe sans être dosée.| | | |
 |soupape|Plus de soupape : rien ne rend la vapeur de trop.| | | |
-|roues|Plus de roues : l'arbre tourne et rien ne le prend.| | | |
-|boîte à fumée|Plus de boîte à fumée : la vapeur usée sort où elle peut.| | | |
-|(récompense)|Elle est à toi.| | | |
+|roues|Plus de roues : l’arbre tourne et rien ne le prend.| | | |
+|boite_a_fumee|Plus de boîte à fumée : la vapeur usée sort où elle peut.| | | |
 
-Les deux lignes qui font le plus de doute, et c'est à un humain de trancher : « la vapeur comprimée la rend » n'est pas une phrase de cour de récréation, et « le sol ne donne rien » non plus. Les remplacer par « ça glisse » serait plus simple et ferait perdre le mot juste du glossaire.
+Cinq lignes restent à juger **à voix haute**, et ce n'est pas moi qui tranche :
+- `danger` — « la vapeur n’a plus rien pour la rendre » : le verbe *rendre* est celui du métier (la soupape rend la vapeur qu'on ne soutire pas), pas celui d'une cour de récréation. « la pression monte faute de soupape » dit la cause avec deux mots du glossaire.
+- `patine` — « L’acier glisse sur l’acier » est repris mot pour mot du glossaire et le modèle est bien en acier sur acier (adhérence 0,3) ; « tours à vide » reste du jargon.
+- `arret` — « le feu ne pousse pas la machine » attribue au feu ce qui est souvent le robinet fermé : la machine arrêtée régulateur ouvert et feu plein ne ment pas par ce mot-là.
+- `roule` — « les roues la prennent » : le verbe vient du glossaire (organe qui « prend » la transmission), mais c'est la ligne la plus abstraite des sept.
+- `foyer` — corrigée ici même : la première version disait « rien ne chauffe plus la vapeur », ce qui met la chaudière à l'envers (le feu chauffe l'eau, la vapeur est le résultat). Elle dit maintenant « plus rien ne chauffe l’eau ».
+
+Aucune de ces lignes n'est reprise telle quelle dans une promesse : le texte se change dans `PAROLES`, et la promesse de forme (une ligne, du français, pas d'impératif, aucune clef qui partage sa phrase) continue de tenir.
 
 ## 3. Les chiffres, tels que mesurés
 
