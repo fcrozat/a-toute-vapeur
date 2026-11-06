@@ -873,3 +873,240 @@ test('la mémoire du jeu s’ouvre vide', () => {
   assert.equal(memo.meilleurRendement, null, 'la mémoire connaît déjà un score');
   assert.notEqual(R.nouvelleMemo(), memo, 'deux parties partageraient la même mémoire');
 });
+
+// --- Ticket 6 · une ligne, des bosses, de l'élan ----------------------------
+
+// La ligne se joue d'une graine, jamais d'un service : deux montages sur la même
+// graine courent sur la même bosse, et la même graine rend la même ligne image
+// après image.
+test('une graine rend toujours la même ligne', () => {
+  const ligne = R.ligneDeLaGraine(7);
+  assert.deepEqual(R.ligneDeLaGraine(7), ligne, 'la même graine ne rend pas la même ligne deux fois de suite');
+  assert.notDeepEqual(R.ligneDeLaGraine(8), ligne, 'deux graines différentes donneraient la même bosse à gravir');
+  assert.equal(ligne.graine, 7);
+
+  // Une graine qui n'est pas un nombre retombe sur celle du fichier, et le dit.
+  assert.equal(R.ligneDeLaGraine('ratée').graine, R.GRAINE_DU_JEU);
+  assert.equal(R.ligneDeLaGraine(Number.NaN).graine, R.GRAINE_DU_JEU);
+  assert.equal(R.ligneDeLaGraine().graine, R.GRAINE_DU_JEU);
+  assert.equal(R.ligneDeLaGraine(-3).graine, R.GRAINE_DU_JEU);
+});
+
+// Le monde ne sert à rien s'il faut lui adjoindre un dictionnaire : il ne porte
+// que les six champs que la physique lit déjà, et rien qui ressemble à une
+// constante de plus.
+test('le monde de la ligne ne porte que ce que la physique lit', () => {
+  const monde = R.mondeDeLaGraine(7);
+  assert.deepEqual(
+    Object.keys(monde).sort(),
+    ['bosses', 'charbonnage', 'circuit', 'pente', 'riviere', 'vent'],
+    'le trajet a glissé un champ que penteReelle n’a pas à additionner'
+  );
+  for (const bosse of monde.bosses) {
+    assert.deepEqual(Object.keys(bosse).sort(), ['a', 'longueur', 'pente'], 'une rampe porte plus que sa place et sa pente');
+    assert.ok(Number.isFinite(bosse.a) && Number.isFinite(bosse.longueur) && Number.isFinite(bosse.pente));
+  }
+});
+
+// Une rivière déclarée partout remplirait la citerne à cent mètres de l'eau. Le
+// monde dit où elle est ; le monde sous les roues ne la rend vraie qu'à cet
+// endroit-là, et rend à la physique les types qu’elle lit : un booléen, un nombre.
+test('la rivière n’est de l’eau que là où elle est', () => {
+  const monde = R.mondeDeLaGraine(11);
+  const aLaSource = mondeSousLesRouesA(monde, monde.riviere.a + monde.riviere.longueur / 2);
+  assert.equal(aLaSource.riviere, true, 'pas d’eau à la rivière');
+  assert.equal(mondeSousLesRouesA(monde, monde.riviere.a - 4).riviere, false, 'de l’eau avant la rivière');
+  assert.equal(mondeSousLesRouesA(monde, monde.riviere.a + monde.riviere.longueur + 4).riviere, false, 'de l’eau après la rivière');
+
+  // Le vent : une force dans la vallée, zéro ailleurs — et un nombre, sinon la
+  // voile de la partie 8 multiplierait par un objet.
+  assert.equal(typeof aLaSource.vent, 'number');
+  assert.equal(aLaSource.vent, 0, 'il y a du vent hors de la vallée');
+  const dansLaVallee = mondeSousLesRouesA(monde, monde.vent.a + monde.vent.longueur / 2);
+  assert.equal(dansLaVallee.vent, monde.vent.force);
+  assert.equal(typeof mondeSousLesRouesA(monde, 0).charbonnage, 'boolean');
+  assert.equal(mondeSousLesRouesA(monde, monde.charbonnage.a + 1).charbonnage, true);
+
+  // Et le relief passe tel quel : ce sont les mêmes rampes, additionnées pareil.
+  assert.deepEqual(aLaSource.bosses, monde.bosses);
+});
+
+function mondeSousLesRouesA(monde, distance) {
+  const engin = M.nouvelEngin(R.PIECES_DE_BASE);
+  engin.distance = distance;
+  return R.mondeSousLesRoues(engin, monde);
+}
+
+// Le scénario de la partie 2, ordre compris : « une ligne qui part à plat, se
+// cabre sur des bosses, passe une rivière, s'arrête à un charbonnage et traverse
+// une vallée ventée ». Une table par graine, mais le scénario est le même.
+test('la ligne part à plat, se cabre, passe une rivière, s’arrête à un charbonnage, traverse une vallée ventée', () => {
+  for (const graine of [1, 7, 11, 42, 1882, 99999]) {
+    const ligne = R.ligneDeLaGraine(graine);
+    const ou = (chose) => `${chose} (graine ${graine})`;
+
+    assert.equal(ligne.pente, 0, ou('le fond n’est pas plat'));
+    const premiereRampe = Math.min(...ligne.bosses.map((b) => b.a));
+    assert.ok(premiereRampe >= 24, ou(`la première rampe arrive à ${premiereRampe} m : pas le temps de prendre de l'élan`));
+
+    const douces = ligne.bosses.filter((b) => b.pente >= 0.1 && b.pente < 0.2);
+    const raides = ligne.bosses.filter((b) => b.pente >= 0.24);
+    assert.ok(douces.length >= 1, ou('pas de bosse à gravir lancée'));
+    assert.ok(raides.length >= 1, ou('pas de rampe où patiner'));
+
+    assert.ok(douces[0].a < ligne.riviere.a, ou('la rivière est avant les bosses'));
+    assert.ok(ligne.charbonnage.a > ligne.riviere.a + ligne.riviere.longueur, ou('le charbonnage est dans la rivière'));
+    assert.ok(ligne.vent.a > ligne.charbonnage.a + ligne.charbonnage.longueur, ou('la vallée ventée est avant le charbonnage'));
+    assert.ok(ligne.vent.force > 0, ou('la vallée ventée n’a pas de vent'));
+    // La rampe qui la refuse ferme la ligne : elle est dernière, et le trajet
+    // s'arrête à son sommet. Une machine qui la tient ne peut pas aller plus loin.
+    assert.equal(raides.length, 1, ou('plus d’une rampe à refuser la machine'));
+    assert.ok(raides[0].a > ligne.vent.a + ligne.vent.longueur, ou('la rampe du bout n’est pas au bout de la ligne'));
+    assert.equal(ligne.longueur, raides[0].a + raides[0].longueur, ou('la ligne ne s’arrête pas au sommet de la rampe'));
+
+    // Le fond de la rivière est plat : c'est là que l'eau dort et que l'engin passe.
+    // On lit le profil avec l'échantillonneur du jeu, pas avec une copie locale.
+    const sol = R.etatDuJeu(M.nouvelEngin(R.PIECES_DE_BASE), R.mondeDeLaLigne(ligne)).sol;
+    assert.equal(sol.penteEn(ligne.riviere.a + ligne.riviere.longueur / 2), 0, ou('la rivière est sur une pente'));
+    assert.equal(sol.longueur, ligne.longueur, ou("l'état du jeu ne rend pas la fin de la ligne"));
+  }
+});
+
+// Le joueur doit savoir d'avance ce qui l'attend : la rampe, sa pente, ce qui
+// reste à parcourir avant d'y entrer. Et le relief dessiné est celui du monde,
+// pente par pente — pas un décor qui sourit pendant que la machine souffre.
+test('la rampe d’en face est annoncée avec sa pente, avant d’y être', () => {
+  const ligne = R.ligneDeLaGraine(7);
+  const monde = R.mondeDeLaLigne(ligne);
+  const sol = (distance) => {
+    const engin = M.nouvelEngin(R.PIECES_DE_BASE);
+    engin.distance = distance;
+    return R.etatDuJeu(engin, monde).sol;
+  };
+  const montantes = ligne.bosses.filter((b) => b.pente >= R.SEUIL_DE_RAMPE).sort((une, autre) => une.a - autre.a);
+  assert.ok(montantes.length >= 2, 'deux rampes à annoncer au moins, pour cet écran');
+
+  const premiere = montantes[0];
+  const avant = sol(premiere.a - 25);
+  assert.equal(avant.prochaine.a, premiere.a, "l'annonce ne parle pas de la rampe qui vient");
+  assert.equal(avant.prochaine.pente, premiere.pente, "l'annonce ne dit pas la pente de la rampe");
+  assert.equal(avant.prochaine.dans, 25, "l'annonce ne dit pas ce qui reste avant la rampe");
+  assert.equal(avant.prochaine.sens, 'devant');
+  assert.equal(avant.prochaine.longueur, premiere.longueur);
+
+  // Dedans, l'annonce tient bon — c'est toujours cette rampe-là, et elle est
+  // dedans. Sortie, c'est la suivante qui prend la place.
+  assert.equal(sol(premiere.a + 1).prochaine.sens, 'dedans');
+  const suivante = montantes[1];
+  assert.equal(sol(premiere.a + premiere.longueur + 1).prochaine.a, suivante.a);
+
+  // Une descente n'est pas une rampe : elle n'est pas annoncée comme telle.
+  const rouge = sol(ligne.bosses.find((b) => b.pente < 0).a + 1);
+  assert.ok(rouge.prochaine.pente > 0, 'une redente annoncée comme une rampe');
+
+  // Au bout de la ligne, il n'y a plus rien à annoncer.
+  assert.equal(sol(ligne.longueur + 10).prochaine, null);
+
+  // Et le dessin suit le monde : la pente du profil au pied de la rampe est nulle,
+  // celle du haut de la rampe est la pente annoncée.
+  assert.equal(sol(premiere.a - 1).penteEn(premiere.a - 0.5), 0);
+  assert.equal(Math.round(sol(premiere.a + 1).penteEn(premiere.a + 0.5) * 100) / 100, premiere.pente);
+});
+
+// Le plat du départ n'est pas un décor : c'est là que l'élan se prend. La même
+// bosse, à la même place, passe si on l'a attaquée lancée, et retient la machine
+// à califourchon sur le point mort si on l'a attaquée au pas.
+test('la première bosse de la ligne se gravit lancée et retient la machine au pas', () => {
+  for (const graine of [1, 7, 11, 42, 1882, 99999]) {
+    const monde = R.mondeDeLaGraine(graine);
+    const bosse = monde.bosses.filter((b) => b.pente >= 0.1 && b.pente < 0.2).sort((une, autre) => une.a - autre.a)[0];
+    const ou = (chose) => `${chose} (graine ${graine}, bosse à ${bosse.a} m à ${bosse.pente})`;
+
+    const lancee = machineVapeur();
+    rouler(lancee, monde, { duree: CHAUFFE });
+    lancee.pousser(0.4);
+    roulerJusquA(lancee, monde, bosse.a + bosse.longueur + 1, 200);
+    assert.ok(lancee.distance > bosse.a + bosse.longueur, ou('la bosse refuse la machine lancée'));
+
+    const auPas = machineVapeur({ regulateur: 0.4 });
+    rouler(auPas, monde, { duree: CHAUFFE });
+    auPas.pousser(0.4);
+    rouler(auPas, monde, { duree: 120 });
+    assert.ok(auPas.distance > bosse.a, ou('la machine au pas n’a même pas touché la rampe'));
+    assert.ok(auPas.distance < bosse.a + bosse.longueur, ou('la bosse laisse passer la machine au pas'));
+
+    // Trois minutes plus tard, elle n'a pas bougé d'un mètre — et l'écran a bien
+    // eu le mot à dire. On ne teste pas l'instant choisi : la machine berce entre
+    // deux points morts, et le sifflement de la soupape lui passe parfois devant.
+    const ancre = auPas.distance;
+    let dite = 0;
+    for (let t = 0; t < 30; t += PAS) {
+      M.pasDeTemps(auPas, monde, PAS);
+      if (R.situation(auPas, monde) === 'cale') dite += 1;
+    }
+    assert.ok(Math.abs(auPas.distance - ancre) < 0.5, ou('la machine au pas avance encore après deux minutes'));
+    assert.ok(dite > 0, ou('le mot « Calée » n’apparaît jamais pendant l’arrêt'));
+  }
+});
+
+// La scène que le billet demande : dans la rampe qui la refuse, les roues
+// tournent, le sol reste en place, le charbon part pour rien — et l'écran a le
+// mot à dire. C'est la rampe du bout de la ligne, celle après laquelle il n'y a
+// plus de chemin.
+test('dans la rampe du bout, les roues tournent et le sol n’avance pas', () => {
+  for (const graine of [1, 7, 11, 42, 1882, 99999]) {
+    const monde = R.mondeDeLaGraine(graine);
+    const raide = monde.bosses.filter((b) => b.pente >= 0.24).sort((une, autre) => une.a - autre.a)[0];
+    const ou = (chose) => `${chose} (graine ${graine}, rampe à ${raide.a} m à ${raide.pente})`;
+
+    const engin = machineVapeur();
+    rouler(engin, monde, { duree: CHAUFFE });
+    engin.pousser(0.4);
+    roulerJusquA(engin, monde, raide.a - 0.5, 400);
+
+    const distanceAuPied = engin.distance;
+    const toursAuPied = engin.machine.tours;
+    const charbonAuPied = engin.charbonBrule;
+    let patine = 0;
+    for (let t = 0; t < 60; t += PAS) {
+      M.pasDeTemps(engin, monde, PAS);
+      if (R.situation(engin, monde) === 'patine') patine += PAS;
+    }
+    const metres = engin.distance - distanceAuPied;
+    const tours = engin.machine.tours - toursAuPied;
+    const charbon = engin.charbonBrule - charbonAuPied;
+
+    assert.ok(patine >= 5, ou(`le mot « Patine » ne tient pas à l'écran : ${patine.toFixed(1)} s`));
+    assert.ok(tours > 2, ou(`les roues ne tournent pas : ${tours.toFixed(1)} tour`));
+    assert.ok(metres < 5, ou(`le sol avance avec les roues : ${metres.toFixed(1)} m en une minute`));
+    assert.ok(charbon > 5, ou(`le charbon ne brûle pas pendant qu'elle patine : ${charbon.toFixed(1)} kg`));
+  }
+});
+
+// La ligne se lit avec les pleins du catalogue : 300 kg de charbon, 240 unités
+// d'eau. C'est l'eau qui borne, jamais le charbon — et la rampe du bout tombe
+// juste là où l'eau finit, une fois la rivière et le charbonnage passés.
+test('la ligne tient dans ce que la machine emporte : un plein d’eau la mène au pied de la rampe du bout', () => {
+  for (const graine of [1, 7, 11, 42, 1882, 99999]) {
+    const monde = R.mondeDeLaGraine(graine);
+    const ligne = R.ligneDeLaGraine(graine);
+    const raide = ligne.bosses.filter((b) => b.pente >= 0.24)[0];
+    const ou = (chose) => `${chose} (graine ${graine})`;
+
+    const engin = M.nouvelEngin(R.PIECES_DE_BASE);
+    engin.commandes.feu = 1;
+    engin.commandes.regulateur = 1;
+    rouler(engin, monde, { duree: CHAUFFE });
+    engin.pousser(0.4);
+    let t = CHAUFFE;
+    while (t < 400 && Math.abs(engin.vitesse()) > 0.02) {
+      M.pasDeTemps(engin, monde, PAS);
+      t += PAS;
+    }
+
+    assert.ok(engin.distance >= raide.a - 0.5, ou(`l'engin n'atteint pas le pied de la rampe du bout : ${engin.distance.toFixed(0)} m sur ${raide.a}`));
+    assert.ok(ligne.riviere.a < engin.distance, ou("l'engin n'atteint pas la rivière sur un plein d'eau"));
+    assert.ok(ligne.charbonnage.a < engin.distance, ou("l'engin n'atteint pas le charbonnage sur un plein d'eau"));
+    assert.ok(engin.soute > 200, ou(`le charbon borne avant l'eau : ${engin.soute.toFixed(0)} kg restants`));
+  }
+});
