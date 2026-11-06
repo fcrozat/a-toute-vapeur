@@ -22,7 +22,7 @@ const R = chargerRegles();
 const PAS = 1 / 120;
 const CHAUFFE = 50; // secondes de feu avant de démarrer : la vapeur monte, lentement et pour de vrai
 
-// La machine des douze promesses, telle que le joueur la monte en partant.
+// La machine des promesses, telle que le joueur la monte en partant.
 const MACHINE = [
   'chaudiere', 'foyer', 'soute', 'citerne', 'cylindre', 'tiroir', 'excentrique',
   'regulateur', 'crosse', 'bielle', 'roues', 'boite_a_fumee', 'soupape',
@@ -377,9 +377,32 @@ test('la vitesse se dit en chiffres et en mots', () => {
 
 // 17
 test('un coup de barre ne freine jamais la machine', () => {
-  assert.equal(R.elanDeLaBarre(0), 0.4, 'à l’arrêt, la barre rend l’élan d’un homme sur le levier');
-  assert.equal(R.elanDeLaBarre(8), 8, 'lancée à huit, la barre ne la ramène pas à un homme');
-  assert.equal(R.elanDeLaBarre(-3), 3, 'en marche arrière, la barre rend la même chose');
+  // Le geste est `engin.pousser()` et les règles n'ont plus de valeur à rendre
+  // pour le défendre : il ne reste qu'à lire l'élan de la machine. Jamais la barre
+  // ne le diminue — et là où deux bras suivent encore la manivelle, elle l'accroît.
+  const lancée = demarrer(machineVapeur(), plaine());
+  const avant = R.etatDuJeu(lancée, plaine()).machine.elan;
+  assert.ok(avant > 2, `la machine n'était pas lancée (${avant})`);
+  lancée.pousser();
+  const apres = R.etatDuJeu(lancée, plaine()).machine.elan;
+  assert.ok(apres >= avant, `la barre a freiné la machine : ${avant} puis ${apres} d'élan`);
+
+  lancée.machine.vitesseAngulaire = 1;
+  lancée.pousser();
+  const rattrapee = R.etatDuJeu(lancée, plaine()).machine.elan;
+  assert.ok(rattrapee > 1.39, `la barre n'a rien ajouté à la machine qui traîne : ${rattrapee} d'élan`);
+
+  const recul = demarrer(machineVapeur(), plaine());
+  recul.machine.marche = 'arriere';
+  rouler(recul, plaine(), { duree: 60 });
+  const avantRecul = R.etatDuJeu(recul, plaine()).machine.elan;
+  assert.ok(avantRecul > 2, `la machine ne reculait pas (${avantRecul})`);
+  recul.pousser();
+  const apresRecul = R.etatDuJeu(recul, plaine()).machine.elan;
+  assert.ok(apresRecul >= avantRecul, `la barre a freiné la marche arrière : ${avantRecul} puis ${apresRecul}`);
+  recul.machine.vitesseAngulaire = -1;
+  recul.pousser();
+  assert.ok(R.etatDuJeu(recul, plaine()).machine.elan > 1.39, "la barre n'a rien ajouté au recul");
 });
 
 test("chaque état de l'engin a son mot à l'écran", () => {
@@ -454,7 +477,7 @@ test('le régulateur dose la vapeur admise sans rien changer à l’avance de l�
   const monde = plaine();
   const ouverte = demarrer(machineVapeur(), monde);
   const serree = demarrer(machineVapeur(), monde);
-  serree.commandes.regulateur = R.regulateurDuCurseur(40);
+  serree.commandes.regulateur = R.commandeDuCurseur(40);
   rouler(serree, monde, { duree: 40 });
   rouler(ouverte, monde, { duree: 40 });
 
@@ -480,14 +503,23 @@ test('le régulateur dose la vapeur admise sans rien changer à l’avance de l�
 });
 
 // 23
-test('le curseur du régulateur rend la commande du modèle, et ne se ferme pas d’aplomb', () => {
-  assert.equal(R.regulateurDuCurseur(100), 1, 'curseur au max : la vapeur devrait être grande ouverte');
-  assert.equal(R.regulateurDuCurseur(37), 0.37, 'la position du curseur ne passe pas telle quelle');
-  assert.equal(R.regulateurDuCurseur(140), 1, 'le curseur ouvre plus que tout');
-  assert.equal(R.regulateurDuCurseur(-20), R.REGULATEUR_FERME, 'le curseur ferme plus que le jeu des tringleries');
-  assert.equal(R.regulateurDuCurseur(''), R.REGULATEUR_FERME, 'un curseur qui ne dit rien devrait rendre le fond');
-  assert.ok(R.REGULATEUR_FERME > 0 && R.REGULATEUR_FERME < 0.1, `le fond du régulateur est mal choisi : ${R.REGULATEUR_FERME}`);
+test('le curseur du régulateur rend la commande du modèle, fermé compris', () => {
+  // Plus de fond à deux pour cent sous le doigt du joueur : le modèle sait rendre
+  // la vapeur fermée, donc le curseur peut descendre jusqu'à zéro (ADR 0009).
+  assert.equal(R.commandeDuCurseur(100), 1, 'curseur au max : la vapeur devrait être grande ouverte');
+  assert.equal(R.commandeDuCurseur(37), 0.37, 'la position du curseur ne passe pas telle quelle');
+  assert.equal(R.commandeDuCurseur(140), 1, 'le curseur ouvre plus que tout');
+  assert.equal(R.commandeDuCurseur(0), 0, 'le curseur ne sait plus fermer la vapeur');
+  assert.equal(R.commandeDuCurseur(-20), 0, 'le curseur ferme plus que tout');
+  assert.equal(R.commandeDuCurseur(''), 0, 'un curseur qui ne dit rien devrait fermer');
   assert.equal(R.commandeDuCurseur(80), 0.8, 'la barre du feu ne convertit pas comme le régulateur');
+
+  // Et le mot que l'écran montre : un pourcentage tant qu'il reste de la vapeur à
+  // doser, le mot « fermé » quand il n'en reste plus. Le nombre seul mentirait.
+  assert.equal(R.motDuRegulateur(1), '100 %', 'grande ouverte, l’écran ne le dit pas');
+  assert.equal(R.motDuRegulateur(0.37), '37 %', 'serrée aux deux tiers, l’écran ne le dit pas');
+  assert.equal(R.motDuRegulateur(0), 'fermé', 'fermée, l’écran affiche encore un pourcentage');
+  assert.equal(/[0-9]/.test(R.motDuRegulateur(0)), false, 'le mot du régulateur fermé récite un chiffre');
 });
 
 // Scène tenue à la main, côté règles : régulateur fermé à chaud.
@@ -496,7 +528,7 @@ test('fermé à chaud, le régulateur prend la machine — et l’écran le dit'
   const engin = demarrer(machineVapeur(), monde);
   assert.equal(R.situation(engin, monde), 'roule', 'la machine ne roulait pas avant le geste');
 
-  engin.commandes.regulateur = R.regulateurDuCurseur(0);   // le chauffeur ferme à fond
+  engin.commandes.regulateur = R.commandeDuCurseur(0);   // le chauffeur ferme à fond
 
   // La machine a son élan : elle roule encore un moment, se fait prendre, casse
   // une fois, puis reste prise. On regarde après qu'elle s'est rangée.
@@ -509,6 +541,8 @@ test('fermé à chaud, le régulateur prend la machine — et l’écran le dit'
   );
 
   const etat = R.etatDuJeu(engin, monde);
+  assert.equal(etat.commandes.mot, 'fermé', 'la vapeur est fermée, l’écran affiche un pourcentage');
+  assert.equal(etat.commandes.regulateur, 0, 'l’état du jeu ne rend pas la commande fermée');
   assert.equal(etat.mot, R.MOTS_DE_SITUATION.cale, 'le mot de la machine prise n’est pas celui de l’état');
   assert.equal(etat.forme, R.FORMES_DE_SITUATION.cale, 'la machine prise ne change pas de forme');
   assert.equal(etat.jauge.souffle, true, 'la vapeur ne s’en va plus par la soupape');
@@ -733,7 +767,7 @@ test('la table des situations est entière, et le plus grave donne le nom', () =
   sansSoupape.soute = 4000;
   sansSoupape.citerne = 4000;
   sansSoupape.commandes.feu = 1;
-  sansSoupape.commandes.regulateur = R.regulateurDuCurseur(0);
+  sansSoupape.commandes.regulateur = R.commandeDuCurseur(0);
   rouler(sansSoupape, monde, { duree: 90 });
   assert.equal(sansSoupape.machine.cale, true, 'cet engin ne serait pas calé : la superposition est ratée');
   assert.equal(sansSoupape.chaudiere.danger, true, 'cet engin ne mettrait pas la tôle en danger');
@@ -749,8 +783,12 @@ test('la table des situations est entière, et le plus grave donne le nom', () =
   assert.equal(R.situation(aSec, monde), 'sec', 'une chaudière à sec parle après le point mort');
 
   // Patine et soupape ouverte : la roue qui glisse passe avant le sifflement.
+  // Le réglage est monté de 0,5 à 0,66 : à 0,5 la rampe tenait la machine au
+  // point mort par une force qui n'existait pas — l'injecteur, soustrait sans
+  // égard au sens, poussait en arrière (cf. ADR 0009). À 0,66 elle grimpe, elle
+  // glisse, elle siffle, et elle n'est pas calée : les deux conditions vraies.
   const rampe = M.nouveauMonde({ pente: 0.3 });
-  const patineur = machineVapeur({ regulateur: 0.5 });
+  const patineur = machineVapeur({ regulateur: 0.66 });
   rouler(patineur, rampe, { duree: CHAUFFE });
   patineur.pousser(4);
   rouler(patineur, rampe, { duree: 60 });
