@@ -40,6 +40,19 @@
     .compte { margin: 0; display: flex; align-items: baseline; gap: 8px; }
     .compte span:last-child { font-variant-numeric: tabular-nums; }
     #aide { margin: 0; color: #9aa7b3; font-size: .85rem; }
+    /* Le garage : un tiroir de cibles de 48 px, deux colonnes quand l'écran s'y prête. */
+    #garage { display: grid; gap: 8px; }
+    #garage-ouvrir { min-height: 48px; min-width: 150px; border-radius: 10px; border: 1px solid #55636f; background: #232a33; color: inherit; font: inherit; }
+    #garage-ouvrir[aria-expanded="true"] { background: #efe7d8; color: #171b21; border-color: #efe7d8; }
+    #etabli { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); }
+    /* Un `display` écrit ici gagne sur l'attribut `hidden` : le tiroir fermé
+       le redit, sinon les lignes restent à l'écran. */
+    #etabli[hidden] { display: none; }
+    .piece { align-items: center; display: flex; gap: 8px; min-height: 48px; }
+    .piece-nom { flex: 1 1 auto; }
+    .piece-nombre { min-width: 2ch; text-align: center; font-variant-numeric: tabular-nums; }
+    .piece button { border: 1px solid #55636f; border-radius: 10px; background: #232a33; color: inherit; font: inherit; font-size: 1.4rem; line-height: 1; min-height: 48px; min-width: 48px; }
+    .piece button[disabled] { opacity: .35; }
     button:focus-visible, input:focus-visible { outline: 3px solid #f2b53c; outline-offset: 2px; }
   </style>
   <main id="atelier">
@@ -69,9 +82,18 @@
       <p class="compte"><span class="etiquette">Tours faits</span><span id="tours-dits">0 tour</span></p>
       <p class="compte"><span class="etiquette">Soute</span><span id="soute-dite">100 % — pleine</span></p>
       <p class="compte"><span class="etiquette">Citerne</span><span id="citerne-dite">100 % — pleine</span></p>
+      <p class="compte"><span class="etiquette">Masse embarquée</span><span id="masse-dite">0 t</span></p>
       <p class="compte"><span class="etiquette">Rendement</span><span id="rendement-dit">—</span></p>
     </section>
-    <p id="aide">Souris, doigt ou flèches sur les barres de feu et de régulateur · Espace&nbsp;: un coup de barre · 1, 2, 4&nbsp;: la vitesse du temps · P&nbsp;: pause</p>
+    <!-- Le garage s'ouvre en tiroir : une ligne par pièce ouverte, le nombre
+         d'exemplaires au milieu, démonter à gauche, brancher à droite. Les lignes
+         viennent des règles (`etat.etabli`) ; une pièce verrouillée n'est pas de
+         cette liste, donc pas du DOM. -->
+    <section id="garage" aria-label="Garage">
+      <p><button id="garage-ouvrir" type="button" aria-expanded="false" aria-controls="etabli">Garage — les pièces de l’engin</button></p>
+      <ul id="etabli" hidden></ul>
+    </section>
+    <p id="aide">Souris, doigt ou flèches sur les barres de feu et de régulateur · Espace&nbsp;: un coup de barre · 1, 2, 4&nbsp;: la vitesse du temps · P&nbsp;: pause · G&nbsp;: le garage</p>
   </main>
   <script>
 // ===== MODELE : DEBUT =====
@@ -1329,6 +1351,9 @@ const reglesDuJeu = (() => {
     souteDite: document.getElementById('soute-dite'),
     citerneDite: document.getElementById('citerne-dite'),
     rendementDit: document.getElementById('rendement-dit'),
+    masseDite: document.getElementById('masse-dite'),
+    garage: document.getElementById('garage-ouvrir'),
+    etabli: document.getElementById('etabli'),
   };
 
   // --- Le départ : la machine des treize pièces, chauffée, au bord de la ligne ---
@@ -2009,6 +2034,95 @@ const reglesDuJeu = (() => {
     return rendement.chiffres === null ? `— ${rendement.mot}` : rendement.chiffres;
   }
 
+  // --- Le garage : brancher, démonter, compter ---
+  // Le tiroir ne décide rien. Il pose les lignes que les règles rendent, et reporte
+  // chaque clic à `brancherPiece` ou `demonterPiece` : c'est là que la borne
+  // d'exemplaires est opposée, et que le charbon reste dans la soute.
+  const lignesDePiece = new Map();
+
+  function nommer(el, mot) {
+    if (el.getAttribute('aria-label') !== mot) el.setAttribute('aria-label', mot);
+  }
+
+  // La masse embarquée, en tonnes et avec deux décimales : cinq des treize pièces de
+  // l'engin d'ouverture coûtent moins d'un dixième, et la monnaie du garage serait
+  // muette à un chiffre. C'est un choix de lecture, pas une précision de plus du modèle.
+  function motsDeMasse(tonnes) {
+    return `${tonnes.toFixed(2).replace('.', ',')} t`;
+  }
+
+  function boutonDePiece(geste, symbole) {
+    const bouton = document.createElement('button');
+    bouton.type = 'button';
+    bouton.className = `piece-${geste}`;
+    bouton.dataset.geste = geste;
+    bouton.textContent = symbole;
+    return bouton;
+  }
+
+  function ligneDeLaPiece() {
+    const ligne = document.createElement('li');
+    ligne.className = 'piece';
+    const oter = boutonDePiece('demonter', '−');
+    const nom = document.createElement('span');
+    nom.className = 'piece-nom';
+    const nombre = document.createElement('span');
+    nombre.className = 'piece-nombre';
+    const monter = boutonDePiece('brancher', '+');
+    ligne.append(oter, nom, nombre, monter);
+    return { element: ligne, oter, nom, nombre, monter };
+  }
+
+  function dessineLetabli(etat) {
+    ecrire(vues.masseDite, motsDeMasse(etat.etabli.masse));
+    // Tiroir fermé, rien à poser : les lignes restent où elles sont.
+    if (vues.etabli.hidden) return;
+
+    const ouvertes = new Set();
+    let rang = 0;
+    for (const piece of etat.etabli.pieces) {
+      ouvertes.add(piece.id);
+      let ligne = lignesDePiece.get(piece.id);
+      if (!ligne) {
+        ligne = ligneDeLaPiece(piece);
+        ligne.oter.dataset.piece = piece.id;
+        ligne.monter.dataset.piece = piece.id;
+        lignesDePiece.set(piece.id, ligne);
+      }
+      ecrire(ligne.nom, piece.nom);
+      ecrire(ligne.nombre, String(piece.nombre));
+      nommer(ligne.oter, `Démonter : ${piece.nom}`);
+      nommer(ligne.monter, `Brancher : ${piece.nom}`);
+      ligne.oter.disabled = !piece.peutDemonter;
+      ligne.monter.disabled = !piece.peutBrancher;
+
+      // L'ordre est celui des règles : les pièces de l'engin d'ouverture d'abord.
+      const attendue = vues.etabli.children[rang];
+      if (attendue !== ligne.element) vues.etabli.insertBefore(ligne.element, attendue || null);
+      rang += 1;
+    }
+    // Une pièce qui n'est plus ouverte sort du DOM, sans laisser de trace grisee.
+    for (const [id, ligne] of lignesDePiece) {
+      if (ouvertes.has(id)) continue;
+      ligne.element.remove();
+      lignesDePiece.delete(id);
+    }
+  }
+
+  function ouvrirLeGarage() {
+    vues.etabli.hidden = !vues.etabli.hidden;
+    vues.garage.setAttribute('aria-expanded', String(!vues.etabli.hidden));
+  }
+
+  function gesteDeLetabli(evenement) {
+    const bouton = evenement.target.closest('button[data-piece]');
+    if (!bouton || bouton.disabled) return;
+    // Un clic, un exemplaire. Les règles refusent ce qui dépasse la limite ou ce
+    // qui n'est pas ouvert : l'écran n'a rien à ajouter au refus.
+    if (bouton.dataset.geste === 'brancher') R.brancherPiece(engin, memo, bouton.dataset.piece);
+    else R.demonterPiece(engin, memo, bouton.dataset.piece);
+  }
+
   function metsALjour(etat) {
     ecrire(vues.chiffres, etat.vitesse.chiffres);
     ecrire(vues.allure, etat.vitesse.mots);
@@ -2023,6 +2137,7 @@ const reglesDuJeu = (() => {
     ecrire(vues.souteDite, motsDeNiveau(etat.reservoirs.soute));
     ecrire(vues.citerneDite, motsDeNiveau(etat.reservoirs.citerne));
     ecrire(vues.rendementDit, motsDeRendement(etat.rendement));
+    dessineLetabli(etat);
   }
 
   // --- Les gestes ---
@@ -2056,6 +2171,8 @@ const reglesDuJeu = (() => {
   vues.feu.addEventListener('input', () => reglerLeFeu(Number(vues.feu.value)));
   vues.regulateur.addEventListener('input', () => reglerLeRegulateur(Number(vues.regulateur.value)));
   vues.barre.addEventListener('click', coupDeBarre);
+  vues.garage.addEventListener('click', ouvrirLeGarage);
+  vues.etabli.addEventListener('click', gesteDeLetabli);
   for (const bouton of vues.paliers) {
     bouton.addEventListener('click', () => choisirLaVitesseDeTemps(bouton.dataset.vitesse));
   }
@@ -2071,6 +2188,11 @@ const reglesDuJeu = (() => {
     } else if (e.key === 'p' || e.key === 'P') {
       e.preventDefault();
       basculerPause();
+    } else if (e.key === 'g' || e.key === 'G') {
+      // G ouvre le garage, comme le dit la décision 16 de la spec. Aucune touche
+      // n'appartient à un bouton ici : le geste marche aussi du doigt d'un bouton.
+      e.preventDefault();
+      ouvrirLeGarage();
     } else if (!dansUnCurseur && R.VITESSES_DU_TEMPS.includes(Number(e.key))) {
       e.preventDefault();
       choisirLaVitesseDeTemps(e.key);
@@ -2083,7 +2205,7 @@ const reglesDuJeu = (() => {
     instantPrecedent = instant;
     // Une image, c'est le même pas de modèle, autant de fois que le palier le demande.
     if (!enPause && ecoule > 0) R.passerLImage(engin, monde, { duree: ecoule, vitesse: vitesseDuTemps });
-    const etat = R.etatDuJeu(engin, monde);
+    const etat = R.etatDuJeu(engin, monde, memo);
     crayon.clearRect(0, 0, large, haut);
     dessineLeSol(etat);
     dessineLeDecor(etat);

@@ -60,6 +60,22 @@ _Avoid_ : accéléré, turbo, fast-forward
 Le carnet du jeu : ce qu'il a déjà rencontré, ce que le garage a décroché, le meilleur rendement mesuré. Vide au premier lancement.
 _Avoid_ : profil, historique, base de données, cache
 
+**Garage**:
+L'endroit du jeu où l'on monte et démonte les pièces de l'engin, en tiroir. Il ne montre que les pièces ouvertes, et ne vend rien : ce qu'il demande, c'est de la masse embarquée. Il ne débloque rien lui-même : c'est la mémoire qui dit ce qui est ouvert.
+_Avoid_ : établi (le billet #8 l'appelle ainsi ; à l'écran, le mot est garage), boutique, inventaire, menu, catalogue (le catalogue est la liste des pièces, au modèle ; le garage est l'endroit où le joueur les manipule)
+
+**Brancher**:
+Monter une pièce sur l'engin. Elle entre dans la masse embarquée et change ce que la machine fait à l'image suivante. Ne se paie ni en charbon ni en eau, et se défaire est toujours possible.
+_Avoid_ : acheter, installer, ajouter (brancher se démonte), débloquer (une pièce débloquée est seulement devenue visible)
+
+**Démonter**:
+Ôter un exemplaire d'une pièce de l'engin. La masse embarquée diminue d'autant et le comportement change sous les yeux ; rien ne se revend, rien ne se rembourse.
+_Avoid_ : supprimer, vendre, enlever, détruire (la pièce reste ouverte au garage)
+
+**Masse embarquée**:
+Ce que pèse l'engin, châssis et pièces montées dessus compris : la monnaie du garage, et ce que l'élève voit bouger quand il branche. En tonnes, avec deux décimales : cinq des treize pièces du départ coûtent moins d'un dixième, et la monnaie doit se voir.
+_Avoid_ : poids (au sens physique du terme), élan (l'élan est la masse en mouvement, pas ce que l'on monte), taille
+
 ### La machine à vapeur
 
 **Machine à vapeur**:
