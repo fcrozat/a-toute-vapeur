@@ -296,7 +296,14 @@ test('l’état du jeu dit quelles pièces portent l’engin', () => {
   const seule = R.etatDuJeu(machineVapeur(), monde).pieces;
   assert.equal(seule.cylindre, 1, 'le dessin ne voit pas le cylindre');
   assert.equal(seule.excentrique, 1, 'le dessin ne voit pas l’excentrique');
-  assert.equal(seule.second_cylindre, undefined, 'le dessin invente un second cylindre');
+  // Une pièce que la machine ne porte pas vaut zéro, et non plus une clef absente :
+  // depuis le billet n°10 l'état répond de tout le catalogue, et le dessin n'a rien à
+  // deviner. L'intention est la même — rien de ce qui n'est pas monté ne se dessine —,
+  // seulement elle se lit maintenant dans un nombre au lieu d'un trou.
+  assert.equal(seule.second_cylindre, 0, 'le dessin invente un second cylindre');
+  assert.equal(seule.pompe, 0, 'le dessin invente une pompe');
+  assert.equal(Object.keys(seule).length, Object.keys(M.CATALOGUE).length,
+    'l’état du jeu ne répond pas du catalogue entier');
 
   const double = R.etatDuJeu(machineVapeur({ pieces: ['second_cylindre'] }), monde).pieces;
   assert.equal(double.second_cylindre, 1, 'un second cylindre branché ne passe pas à l’écran');
@@ -886,7 +893,6 @@ test('la mémoire du jeu s’ouvre vide', () => {
   const { braise, garage, ...leReste } = memo;
   assert.deepEqual(leReste, {
     refroidissements: {}, deblocages: [], meilleurRendement: null,
-    garage: { suivis: {}, aDire: null },
   });
   assert.equal(Object.keys(memo.refroidissements).length, 0, 'la mémoire porte déjà des refroidissements');
   assert.equal(memo.deblocages.length, 0, 'la mémoire débloque déjà des pièces');

@@ -40,6 +40,12 @@
     #regulateur { accent-color: #6d93a6; }
     #barre { min-height: 48px; min-width: 150px; border-radius: 10px; border: 1px solid #55636f; background: #232a33; color: inherit; font: inherit; }
     #barre:active { background: #e2622b; color: #171b21; }
+    /* Le levier de la pompe : la même cible de 48 px que la barre, et son état
+       s'embraye aussi sans couleur — la pompe embrayée est enfoncée. Il n'apparaît
+       à l'écran qu'avec la pièce (billet n°10) : un levier sans pompe serait un
+       menu à apprendre pour rien. */
+    #pompe { min-height: 48px; min-width: 150px; border-radius: 10px; border: 1px solid #55636f; background: #232a33; color: inherit; font: inherit; }
+    #pompe[aria-pressed="true"] { background: #6d93a6; color: #171b21; border-color: #6d93a6; }
     /* Les paliers du temps : trois boutons, trois cibles de 48 px. */
     #vitesse-temps { margin: 0; display: flex; align-items: center; gap: 8px; }
     .palier { min-height: 48px; min-width: 62px; border-radius: 10px; border: 1px solid #55636f; background: #232a33; color: inherit; font: inherit; font-variant-numeric: tabular-nums; }
@@ -85,6 +91,10 @@
         <output id="regulateur-dit" for="regulateur">100 %</output>
       </label>
       <button id="barre" type="button">Un coup de barre</button>
+      <!-- La pompe est un arbre que l'on embraye : montée, elle ne pompe rien tant
+           que personne n'ouvre le levier, et ce que ça coûte, c'est le modèle qui le
+           compte. Le bouton ne se montre qu'avec la pièce. -->
+      <button id="pompe" type="button" aria-pressed="false" hidden>La pompe</button>
       <p id="vitesse-temps"><span class="etiquette">Vitesse de temps</span>
         <button class="palier" type="button" data-vitesse="1" aria-pressed="true">×1</button>
         <button class="palier" type="button" data-vitesse="2" aria-pressed="false">×2</button>
@@ -1158,7 +1168,12 @@ const reglesDuJeu = (() => {
   // montage, rien de plus. C’est une copie — la projection ne peut pas brancher
   // une pièce en écrivant dans l’état du jeu.
   function piecesPortees(engin) {
-    return { ...engin.pieces };
+    // L'état répond de tout le catalogue, monté ou non : la projection qui demande
+    // « combien de pompes ? » doit entendre zéro plutôt que toucher une clef absente.
+    // Une promesse (`l'écran ne demande que ce l'état du jeu rend`) chemin par chemin.
+    const portees = {};
+    for (const id of Object.keys(modeleVapeur.CATALOGUE)) portees[id] = engin.pieces[id] || 0;
+    return portees;
   }
 
   // La borne d'exemplaires d'une pièce, telle que le catalogue la donne. Une pièce
@@ -1265,16 +1280,27 @@ const reglesDuJeu = (() => {
   const VITESSE_D_ROULER = 0.4;
   const VITESSE_PRISE = 0.1;
 
-  // À partir de là, une montée est une rampe qui refuse la machine. Mesuré sur la
-  // ligne de la graine : la butte d'ouverture est à 15 %, la rampe du bout à 34 %
-  // (`penteDouce` 0,12-0,16, `penteRaide` 0,28-0,34 dans `ligneDeLaGraine`). Ce qui
-  // arrête la machine à la butte, c'est son point mort ; ce qui l'arrête au bout,
-  // c'est la pente. À 20 % les deux se distinguent, et un même arrêt ne compte pas
-  // deux leçons.
+  // À partir de là, une montée est une rampe qui refuse la machine, et l'arrêt qui y
+  // tombe est une leçon de pente plutôt qu'une leçon de point mort — un même arrêt ne
+  // compte pas deux fois.
+  //
+  // Le nombre vient de la ligne, pas d'une envie : `ligneDeLaGraine` met la butte
+  // d'ouverture entre 12 % et 16 % (`penteDouce`) et la rampe du bout entre 28 % et
+  // 34 % (`penteRaide`), les berges de la rivière restent à 5 %. À 12 %, la ligne de
+  // partage prend les montées du voyage et laisse les berges tranquilles sur toutes
+  // les graines.
+  //
+  // C'est le cheval qui a tranché, pas la rhétorique : arrêtée à la butte, la machine
+  // y est aussi bien prise à son point mort qu'à court de force, et les deux pièces
+  // qui répondent l'ont mesuré (montée, la butte est passée à 73 s de machine ; second
+  // cylindre, à 76 s). Une réponse qui ne répond pas de rien n'est pas une récompense,
+  // donc la butte est la leçon de la rampe ; le point mort garde les arrêts de plat,
+  // là où le cheval n'a rien à tirer.
+  //
   // Autre chose, donc autre nombre que `SEUIL_DE_RAMPE` (0,08) : celui-là dit au
   // dessin quelles bosses valent la peine d'être annoncées à l'avance ; celui-ci dit
   // si c'est la pente qui refuse la machine.
-  const PENTE_DUNE_RAMPE = 0.2;
+  const PENTE_DUNE_RAMPE = 0.12;
 
   // Le vent d'une vallée, mesuré encore : hors de la bande ventée, le vent de fond
   // souffle à 0,45 sous les roues ; dans la bande (0,45-0,9 selon la graine), il
@@ -1299,8 +1325,11 @@ const reglesDuJeu = (() => {
       seuil: 3,
       pieces: ['second_cylindre'],
       parole: 'ouvre_calage',
-      episode: 'l’engin roulait à plus de 0,4 m/s puis se tient sous 0,1 m/s pendant deux secondes, la vapeur demandée et de l’eau dans la chaudière ; il faut avoir repris 0,4 m/s pour qu’un second calage compte',
-      fait_present: (engin) => estPrise(engin) && !estASeche(engin),
+      episode: 'l’engin roulait à plus de 0,4 m/s puis se tient sous 0,1 m/s pendant deux secondes, la vapeur demandée, de l’eau dans la chaudière et moins de 20 % de pente sous les roues ; il faut avoir repris 0,4 m/s pour qu’un second calage compte',
+      // Sous la pente d'une rampe seulement : arrêtée dans une montée, la machine a
+      // deux leçons et celle de la pente est la première — c'est elle que le cheval
+      // dénoue. Une chute ne compte pas deux fois.
+      fait_present: (engin, sous) => estPrise(engin) && !estASeche(engin) && estAUPlat(sous),
       fait_reprise: (engin) => roule(engin),
     },
     {
@@ -1315,10 +1344,10 @@ const reglesDuJeu = (() => {
       pieces: ['cheval'],
       parole: 'ouvre_rampe',
       episode: 'la machine tient la vapeur ouverte dans une montée de 20 % ou plus sans avancer de plus de 0,1 m/s, pendant deux secondes',
-      fait_present: (engin, sousLaRoue) => estPrise(engin) && !estASeche(engin)
-        && Boolean(sousLaRoue) && sousLaRoue.pente >= PENTE_DUNE_RAMPE,
-      fait_reprise: (engin, sousLaRoue) => roule(engin)
-        || (Boolean(sousLaRoue) && sousLaRoue.pente < PENTE_DUNE_RAMPE),
+      fait_present: (engin, sous) => estPrise(engin) && !estASeche(engin)
+        && Boolean(sous) && sous.pente >= PENTE_DUNE_RAMPE,
+      fait_reprise: (engin, sous) => roule(engin)
+        || (Boolean(sous) && sous.pente < PENTE_DUNE_RAMPE),
     },
     {
       fait: 'citerne',
@@ -1353,8 +1382,8 @@ const reglesDuJeu = (() => {
       pieces: ['pompe'],
       parole: 'ouvre_riviere',
       episode: 'la rivière passe sous les roues et s’y tient deux secondes',
-      fait_present: (engin, sousLaRoue) => Boolean(sousLaRoue) && sousLaRoue.riviere,
-      fait_reprise: (engin, sousLaRoue) => Boolean(sousLaRoue) && !sousLaRoue.riviere,
+      fait_present: (engin, sous) => Boolean(sous) && sous.riviere,
+      fait_reprise: (engin, sous) => Boolean(sous) && !sous.riviere,
     },
     {
       fait: 'vent',
@@ -1363,8 +1392,8 @@ const reglesDuJeu = (() => {
       pieces: ['eolienne', 'voile'],
       parole: 'ouvre_vent',
       episode: 'le vent monte à 0,6 sous les roues et tient deux secondes',
-      fait_present: (engin, sousLaRoue) => Boolean(sousLaRoue) && sousLaRoue.vent >= VENT_DUNE_VALLEE,
-      fait_reprise: (engin, sousLaRoue) => Boolean(sousLaRoue) && sousLaRoue.vent < VENT_DUNE_VALLEE,
+      fait_present: (engin, sous) => Boolean(sous) && sous.vent >= VENT_DUNE_VALLEE,
+      fait_reprise: (engin, sous) => Boolean(sous) && sous.vent < VENT_DUNE_VALLEE,
     },
   ];
 
@@ -1409,6 +1438,12 @@ const reglesDuJeu = (() => {
     return engin.chaudiere.aSec || engin.chaudiere.danger;
   }
 
+  function estAUPlat(sous) {
+    // Le terrain compte pour peu qu'il soit connu : sans monde, la machine est tenue
+    // pour à plat, et le seul fait qui manque alors est celui de la rampe.
+    return !sous || sous.pente < PENTE_DUNE_RAMPE;
+  }
+
   function suiviDe(g, declic) {
     if (!g.suivis[declic.fait]) {
       // `branche` : a rencontré le contraire du fait, donc écoute. Un seuil à zéro
@@ -1420,6 +1455,11 @@ const reglesDuJeu = (() => {
 
   // Un fait tenu, compté une fois. Rend le nombre d'épisodes du fait à cette image.
   function tiensLeFait(suivi, present, reprise, maintenant) {
+    // Une autre machine a été lancée : l'horloge repart de zéro. Les faits comptés
+    // restent — la mémoire est celle d'une partie, pas d'un essai, et trois lancers
+    // qui calent sont bien trois calages — mais une chute en cours n'a plus de sens
+    // et on la laisse tomber.
+    if (suivi.depuis !== null && maintenant < suivi.depuis) suivi.depuis = null;
     if (suivi.depuis !== null) {
       if (!present) {
         suivi.depuis = null;              // l'image dément la chute : rien n'est tenu
@@ -1445,14 +1485,17 @@ const reglesDuJeu = (() => {
     const g = memo ? memo.garage : null;
     if (!g || !engin) return { ouverts: [], recents: [], episodes: {} };
     const maintenant = engin.tempsEcoule;
-    const sousLaRoue = monde ? mondeSousLesRoues(engin, monde) : null;
+    // La pente sous les roues n'est pas celle du monde : `mondeSousLesRoues` rend le
+    // fond, `penteReelle` somme le fond et les rampes qui couvrent la machine —
+    // c'est elle que le modèle grimpe, c'est elle que le garage regarde.
+    const sous = monde ? { ...mondeSousLesRoues(engin, monde), pente: modeleVapeur.penteReelle(engin, monde) } : null;
     const recents = [];
     const episodes = {};
     for (const declic of TABLE_DU_GARAGE) {
       const suivi = suiviDe(g, declic);
       const n = tiensLeFait(suivi,
-        declic.fait_present(engin, sousLaRoue),
-        declic.fait_reprise(engin, sousLaRoue),
+        declic.fait_present(engin, sous),
+        declic.fait_reprise(engin, sous),
         maintenant);
       episodes[declic.fait] = n;
       if (n < declic.seuil || suivi.ouvert) continue;
@@ -2105,6 +2148,12 @@ const reglesDuJeu = (() => {
       commandes: {
         feu: engin.commandes.feu,
         regulateur: engin.commandes.regulateur,
+        // La pompe et la fusée s'ouvrent, elles aussi, par une commande du modèle :
+        // l'écran les montre embrayées ou rendues, jamais il ne décide qu'elles
+        // poussent. Une promesse le vérifie : la projection ne lit que ce que l'état
+        // du jeu rend.
+        pompe: engin.commandes.pompe,
+        fusee: engin.commandes.fusee,
         // Le mot vient de la commande réelle du modèle, pas de la position du
         // curseur : c'est le robinet qui est fermé, pas le doigt du joueur. Et si le
         // régulateur n'est pas monté, c'est encore le robinet qui parle.
@@ -2187,6 +2236,7 @@ const reglesDuJeu = (() => {
     regulateur: document.getElementById('regulateur'),
     regulateurDit: document.getElementById('regulateur-dit'),
     barre: document.getElementById('barre'),
+    pompe: document.getElementById('pompe'),
     paliers: Array.from(document.querySelectorAll('#vitesse-temps .palier')),
     distanceDits: document.getElementById('distance-dits'),
     rampeDite: document.getElementById('rampe-dite'),
@@ -2516,6 +2566,10 @@ const reglesDuJeu = (() => {
     crayon.scale(ECHELLE, -ECHELLE);   // 1 = un mètre, et y vers le haut
     crayon.lineJoin = 'round';
 
+    // La remorque se monte derrière et se trace avant tout : son timon doit passer
+    // sous le châssis, et une pièce de gag qui ne se voit pas n'est pas une pièce.
+    if (p.remorque) dessineLaRemorque();
+
     // les roues d’abord : tout le reste se monte dessus
     if (p.roues) {
       // chaque roue pose son bandeau sur le rail, petite ou grande
@@ -2532,6 +2586,16 @@ const reglesDuJeu = (() => {
     // le châssis
     rect(-1.8, 0.6, 3.1, 0.12, CHARS.goudron);
 
+    // Ce qui tire devant : la trace part du poitrail et se sanglle au bout du châssis.
+    if (p.cheval) dessineLeCheval(etat);
+
+    // Ce qui pousse dessus : les ailes, la toile, la roue d'Héron, la fusée. Elles se
+    // montent sur la chaudière et se voient d'autant mieux qu'elles sont hautes.
+    if (p.eolienne) dessineLEolienne(etat);
+    if (p.voile) dessineLaVoile(etat);
+    if (p.eolipyle) dessineLEolipyle(etat);
+    if (p.fusee) dessineLaFusee(etat);
+
     if (p.foyer) {
       rect(D.foyer.x0, D.foyer.y0, D.foyer.x1 - D.foyer.x0, D.foyer.y1 - D.foyer.y0, CHARS.fer);
       // le feu du chauffeur, tel qu'il l'a réglé ; éteint, le foyer ne montre plus
@@ -2544,7 +2608,9 @@ const reglesDuJeu = (() => {
         trait(D.foyer.x0 + 0.08, D.foyer.y0 + 0.07, D.foyer.x1 - 0.08, D.foyer.y0 + 0.2, '#39424c', 0.03);
       }
     }
-    if (p.soute) dessineLaSoute(etat);
+    // Un coffre de plus se dessine : l'établi compte deux soutes, l'image ne peut pas
+    // en montrer une.
+    for (let rang = 0; rang < (p.soute || 0); rang += 1) dessineLaSoute(etat, rang);
     if (p.chaudiere) {
       rect(D.chaudiere.x0, D.chaudiere.y - D.chaudiere.rayon, D.chaudiere.x1 - D.chaudiere.x0, 2 * D.chaudiere.rayon, CHARS.fer);
       // l'eau de la chaudière : le niveau se dessine, et une couronne à nu se voit
@@ -2566,7 +2632,7 @@ const reglesDuJeu = (() => {
         const ouverture = 1 - etat.commandes.regulateur;
         trait(-0.78, D.chaudiere.y + D.chaudiere.rayon, -0.78 + 0.16 * ouverture, D.chaudiere.y + D.chaudiere.rayon + 0.16, CHARS.cuivre, 0.04);
       }
-      if (p.citerne) dessineLaCiterne(etat);
+      for (let rang = 0; rang < (p.citerne || 0); rang += 1) dessineLaCiterne(etat, rang);
       if (p.soupape) {
         // la soupape se soulève quand elle siffle : le geste de la vapeur qui s'en va
         const soulevee = etat.jauge.souffle ? 0.09 : 0;
@@ -2595,6 +2661,10 @@ const reglesDuJeu = (() => {
         rect(D.boiteFumee.x0 + 0.05, D.chaudiere.y - 0.1, 0.35, 0.2, 'rgba(223, 231, 238, 0.35)');
       }
     }
+
+    // Le second cylindre : calé au quart du tour, comme dans le modèle. Il répond des
+    // calages répétés, et il se voit à sa bielle partie de l'équerre de la première.
+    if (p.second_cylindre) dessineLeSecondCylindre(etat);
 
     // la glace du tiroir et le tiroir lui-même
     if (p.tiroir) {
@@ -2638,6 +2708,9 @@ const reglesDuJeu = (() => {
     disque(AXE.x, AXE.y, 0.09, CHARS.ferClair);
     trait(AXE.x, AXE.y, vilebrequin.x, vilebrequin.y, CHARS.cuivre, 0.06);
 
+    // La pompe : entraînée par la manivelle, elle trempe dans ce que le sol a d'eau.
+    if (p.pompe) dessineLaPompe(etat);
+
     // Une roue qui patine marque le rail sans emporter la machine.
     if (etat.forme === 'triangle') {
       for (let k = 0; k < 3; k += 1) {
@@ -2648,19 +2721,166 @@ const reglesDuJeu = (() => {
     crayon.restore();
   }
 
-  // La soute : ce qui reste à brûler, dessiné à l'échelle du coffre.
-  function dessineLaSoute(etat) {
+  // La soute : ce qui reste à brûler, dessiné à l'échelle du coffre. Le second
+  // exemplaire s'empile sur le premier : deux caisses, une seule jauge — c'est la
+  // règle qui les compte ensemble, l'image ne fait que les montrer.
+  function dessineLaSoute(etat, rang = 0) {
     const plein = etat.reservoirs.soute.plein;
-    rect(-2.15, 1.0, 0.4, 0.5, CHARS.goudron);
-    rect(-2.11, 1.03, 0.32, 0.44 * plein, '#57504a');
-    trait(-2.15, 1.0, -1.75, 1.0, CHARS.ferClair, 0.02);
+    const y = 1.0 + rang * 0.56;
+    rect(-2.15, y, 0.4, 0.5, CHARS.goudron);
+    rect(-2.11, y + 0.03, 0.32, 0.44 * plein, '#57504a');
+    trait(-2.15, y, -1.75, y, CHARS.ferClair, 0.02);
   }
 
-  // La citerne : ce qui reste à vaporiser.
-  function dessineLaCiterne(etat) {
-    const y = D.chaudiere.y + D.chaudiere.rayon;
+  // La citerne : ce qui reste à vaporiser. Une citerne de plus se pose au-dessus de
+  // la première, et le niveau dessiné est celui des deux, parce que `etat.reservoirs`
+  // rend la capacité montée.
+  function dessineLaCiterne(etat, rang = 0) {
+    const y = D.chaudiere.y + D.chaudiere.rayon + rang * 0.3;
     rect(-1.52, y, 0.6, 0.26, '#4a6572');
     rect(-1.5, y + 0.02, 0.56, 0.22 * etat.reservoirs.citerne.plein, '#6d93a6');
+  }
+
+  // Le second cylindre : le quart de tour que le modèle lui donne se retrouve ici
+  // trait pour trait — même manivelle, même bielle, une manivelle à l'équerre.
+  function dessineLeSecondCylindre(etat) {
+    const c = D.cylindre;
+    const axe = AXE.y + 0.62;
+    const a = -etat.machine.angle - Math.PI / 2;
+    rect(c.x0, axe - c.demi, c.x1 - c.x0, 2 * c.demi, '#434d5a');
+    const volant = { x: AXE.x + D.manivelle * Math.cos(a), y: AXE.y + D.manivelle * Math.sin(a) };
+    const crosse = positionDeLaCrosse(etat, a) + D.tige;
+    rect(0.45, axe - 0.11, 0.8, 0.03, '#3f4753');
+    rect(crosse - 0.07, axe - 0.07, 0.14, 0.14, CHARS.ferClair);
+    rect(crosse + 0.07, axe - c.demi + 0.03, c.x1 - crosse - 0.1, 2 * c.demi - 0.06, 'rgba(223, 231, 238, 0.28)');
+    rect(crosse - 0.05, axe - c.demi + 0.03, 0.1, 2 * c.demi - 0.06, CHARS.cuivre);
+    trait(volant.x, volant.y, crosse - 0.07, axe, CHARS.ferClair, 0.045);
+    disque(volant.x, volant.y, 0.05, CHARS.cuivre);
+  }
+
+  // La pompe : un barillet, un balancier que la manivelle lève et baisse, et un tuyau
+  // qui trempe. Elle ne boit que ce que le sol offre — le modèle le sait, l'image le
+  // dit avec le filet d'eau.
+  function dessineLaPompe(etat) {
+    const x = 0.78;
+    rect(x, 0.1, 0.24, 0.42, CHARS.fer);
+    rect(x + 0.05, 0.14, 0.14, 0.06, CHARS.cuivre);
+    const bascule = 0.09 * Math.sin(-etat.machine.angle);
+    trait(x - 0.16, 0.6 + bascule, x + 0.16, 0.6 - bascule, CHARS.ferClair, 0.045);
+    trait(x + 0.12, 0.52, x + 0.12, 0.02, '#3f5a68', 0.045);
+    if (etat.commandes.pompe > 0 && riviereDessous(etat) > 0) {
+      // le puisage : l'eau monte, et le couple de la machine le paie
+      for (let k = 0; k < 3; k += 1) {
+        const y = 0.58 + 0.16 * k + 0.08 * Math.sin(etat.comptes.secondes * 6 - k);
+        disque(x + 0.3, y, 0.035, '#6d93a6');
+      }
+    }
+  }
+
+  // Le cheval : devant, la trace au poitrail. Il tire le châssis et non les roues, et
+  // c'est pour ça qu'il monte où l'acier glisse. Il mange l'avoine du départ : le
+  // modèle la compte et la rend, l'image ne fait que montrer la bête.
+  function dessineLeCheval(etat) {
+    const x = 2.2;                      // l'épaule, devant la machine
+    const robe = '#6a4a34';
+    const pas = etat.comptes.distance * 2.6;
+    rect(x, 0.6, 0.95, 0.44, robe);
+    trait(x + 0.88, 0.98, x + 1.16, 1.26, robe, 0.17);          // l'encolure
+    rect(x + 1.1, 1.2, 0.32, 0.17, robe);                        // la tête
+    trait(x + 0.02, 1.0, x - 0.2, 0.74, robe, 0.06);             // la queue
+    for (const [jambe, phase] of [[0.08, 0], [0.3, Math.PI], [0.72, Math.PI], [0.92, 0]]) {
+      trait(x + jambe, 0.62, x + jambe + 0.16 * Math.sin(pas + phase), 0.02, robe, 0.055);
+    }
+    trait(x + 0.02, 0.76, 1.3, 0.62, CHARS.rail, 0.035);         // la trace
+  }
+
+  // L'éolienne : un mât à l'arrière, quatre ailes, et le vent du voyage qui les
+  // tourne. Ailleurs que dans la vallée, les ailes dorment — le monde a sa force, pas
+  // l'écran.
+  function dessineLEolienne(etat) {
+    const x = -2.05, y = 2.42;
+    trait(x, 0.72, x, y, CHARS.ferClair, 0.05);
+    const tour = etat.comptes.secondes * (0.4 + 2.2 * ventDessous(etat));
+    for (let k = 0; k < 4; k += 1) {
+      const ang = tour + (k * Math.PI) / 2;
+      trait(x, y, x + 0.4 * Math.cos(ang), y + 0.4 * Math.sin(ang), CHARS.fer, 0.055);
+    }
+    disque(x, y, 0.07, CHARS.cuivre);
+  }
+
+  // La voile : un mât et une toile que le vent creuse. Elle pousse le châssis, pas
+  // l'arbre ; c'est ce que le modèle en sait, et c'est ce qui se voit.
+  function dessineLaVoile(etat) {
+    const x = -1.05, bas = 1.98, haut = 3.3;
+    trait(x, bas, x, haut, CHARS.ferClair, 0.045);
+    const gonflee = 0.45 + 0.35 * Math.min(1, ventDessous(etat));
+    crayon.beginPath();
+    crayon.moveTo(x, haut);
+    crayon.quadraticCurveTo(x - gonflee, (bas + haut) / 2, x, bas + 0.12);
+    crayon.closePath();
+    crayon.fillStyle = '#d9c9a3';
+    crayon.fill();
+  }
+
+  // L'éolipyle : la roue d'Héron posée sur la chaudière. Ça tourne, ça boit de la
+  // vapeur, et personne n'en a rien retiré — le gag est là, et il se voit.
+  function dessineLEolipyle(etat) {
+    const x = 0.42, y = D.chaudiere.y + D.chaudiere.rayon + 0.22;
+    trait(x, D.chaudiere.y + D.chaudiere.rayon, x, y - 0.12, CHARS.fer, 0.04);
+    disque(x, y, 0.13, CHARS.cuivre);
+    const tour = etat.comptes.secondes * 5;
+    for (const cote of [-1, 1]) {
+      const ex = x + cote * 0.15 * Math.cos(tour);
+      const ey = y + 0.15 * Math.sin(tour);
+      trait(x, y, ex, ey, CHARS.ferClair, 0.04);
+      disque(ex, ey, 0.035, CHARS.vapeur);
+    }
+  }
+
+  // La fusée : la seule poussée qui ne passe ni par l'arbre ni par la roue. Sanglée
+  // sur la chaudière, elle ne crache que si la commande du modèle est ouverte.
+  function dessineLaFusee(etat) {
+    const x0 = -0.9, x1 = 0.3, y = D.chaudiere.y + D.chaudiere.rayon + 0.12;
+    rect(x0, y, x1 - x0, 0.2, '#8c8677');
+    crayon.beginPath();
+    crayon.moveTo(x1, y);
+    crayon.lineTo(x1 + 0.28, y + 0.1);
+    crayon.lineTo(x1, y + 0.2);
+    crayon.closePath();
+    crayon.fillStyle = CHARS.braise;
+    crayon.fill();
+    for (const x of [x0 + 0.16, x1 - 0.22]) rect(x, y - 0.03, 0.05, 0.26, CHARS.goudron);
+    if (etat.commandes.fusee > 0) {
+      trait(x0 - 0.02, y + 0.1, x0 - 0.3, y + 0.1, CHARS.braise, 0.09);
+      trait(x0 - 0.3, y + 0.1, x0 - 0.42, y + 0.1, '#f2b53c', 0.05);
+    }
+  }
+
+  // La remorque : deux roues, un plateau, un timon sanglé au châssis. Elle ne donne
+  // rien ; elle ajoute sa masse, et ça se voit à la peine de la machine.
+  function dessineLaRemorque() {
+    trait(-1.8, 0.62, -2.4, 0.5, CHARS.ferClair, 0.05);
+    rect(-3.3, 0.46, 1.0, 0.1, CHARS.goudron);
+    rect(-3.3, 0.56, 0.06, 0.26, CHARS.fer);
+    rect(-2.36, 0.56, 0.06, 0.26, CHARS.fer);
+    for (const x of [-3.02, -2.56]) {
+      cercle(x, 0.26, 0.26, CHARS.goudron, CHARS.fer, 0.05);
+      disque(x, 0.26, 0.07, CHARS.ferClair);
+    }
+  }
+
+  // Le vent et l'eau que la machine a dessous elle, tels que le monde les dit : le
+  // dessin ne choisit pas sa météo, il lit la bande où il se trouve.
+  function ventDessous(etat) {
+    return forceDeLaBande(etat.sol.vent, etat.comptes.distance);
+  }
+  function riviereDessous(etat) {
+    return forceDeLaBande(etat.sol.riviere, etat.comptes.distance);
+  }
+  function forceDeLaBande(bande, distance) {
+    if (!bande) return 0;
+    const dedans = distance >= bande.a && distance <= bande.a + bande.longueur;
+    return dedans ? Math.abs(bande.force === undefined ? 1 : bande.force) : 0;
   }
 
   // La tôle qui travaille : le dessus de la chaudière gondole. Un dessin, pas une
@@ -2685,8 +2905,11 @@ const reglesDuJeu = (() => {
 
   // La crosse suit la manivelle, corde au pied de la bielle : de la géométrie,
   // pas de la physique. Le piston est au bout de la tige, dans le cylindre.
-  function positionDeLaCrosse(etat) {
-    const a = -etat.machine.angle;
+  function positionDeLaCrosse(etat, angle) {
+    // L'angle est celui de la manivelle considérée : le second cylindre est calé au
+    // quart du tour et sa crosse se cherche au même endroit avec un quart de tour de
+    // moins.
+    const a = angle === undefined ? -etat.machine.angle : angle;
     const r = D.manivelle;
     const L = D.bielle;
     const deltaY = r * Math.sin(a);
@@ -2996,6 +3219,9 @@ const reglesDuJeu = (() => {
     // Le régulateur affiche la commande telle que le modèle la reçoit : fermé
     // d'aplomb, le mot dit « fermé », parce qu'il n'y a plus de vapeur à doser.
     ecrire(vues.regulateurDit, etat.commandes.mot);
+    // Le levier de la pompe n'existe à l'écran que pour une machine qui porte la
+    // pièce : avant le garage, rien à embrayer et rien à apprendre.
+    vues.pompe.hidden = !(etat.pieces.pompe > 0);
     ecrire(vues.distanceDits, motsDeDistance(etat.comptes.distance));
     ecrire(vues.rampeDite, motsDeLaRampe(etat.sol.prochaine));
     ecrire(vues.toursDits, motsDeTours(etat.comptes.tours));
@@ -3037,6 +3263,14 @@ const reglesDuJeu = (() => {
     // règles qui le savent et Braise qui le dit : l'écran n'invente pas son mot.
     R.coupDeBarre(engin, memo);
   }
+  // Embrayer la pompe : le levier qui arrive avec la pièce (billet n°10). Le modèle
+  // ne puise que si sa commande est ouverte, et il paie ce puisage en couple repris
+  // sur l'arbre ; l'écran ouvre et ferme, il ne pompe pas.
+  function embrayerLaPompe() {
+    const embrayee = engin.commandes.pompe > 0;
+    engin.commandes.pompe = R.commandeDuCurseur(embrayee ? 0 : 100);
+    vues.pompe.setAttribute('aria-pressed', String(!embrayee));
+  }
   function couperLaParole() {
     const muet = R.basculerParole(memo);
     vues.braiseBouton.setAttribute('aria-pressed', String(!muet));
@@ -3049,6 +3283,7 @@ const reglesDuJeu = (() => {
   vues.feu.addEventListener('input', () => reglerLeFeu(Number(vues.feu.value)));
   vues.regulateur.addEventListener('input', () => reglerLeRegulateur(Number(vues.regulateur.value)));
   vues.barre.addEventListener('click', coupDeBarre);
+  vues.pompe.addEventListener('click', embrayerLaPompe);
   vues.garage.addEventListener('click', ouvrirLeGarage);
   vues.braiseBouton.addEventListener('click', couperLaParole);
   vues.etabli.addEventListener('click', gesteDeLetabli);
