@@ -1,10 +1,10 @@
-# moteur-vapeur
+# À toute vapeur
 
 ## Agent skills
 
 ### Issue tracker
 
-Issues live in GitHub Issues for `fcrozat/moteur-vapeur`, operated with the `gh` CLI. See `docs/agents/issue-tracker.md`.
+Issues live in GitHub Issues for `fcrozat/a-toute-vapeur`, operated with the `gh` CLI. See `docs/agents/issue-tracker.md`.
 
 ### Triage labels
 

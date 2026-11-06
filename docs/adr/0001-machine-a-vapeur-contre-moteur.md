@@ -9,4 +9,6 @@ Le jeu doit nommer deux choses que le langage courant confond : la machine qui c
 
 ## Consequences
 
-Le nom du dépôt, `moteur-vapeur`, n'est donc pas le nom de la machine : c'est voulu, ne le « corrigez » pas. Le glossaire fait autorité ; un texte qui dit « moteur » en parlant du cylindre et du piston est une faute à reprendre.
+Le nom du dépôt n'est pas le nom de la machine : c'est voulu, ne le « corrigez » pas. Le glossaire fait autorité ; un texte qui dit « moteur » en parlant du cylindre et du piston est une faute à reprendre.
+
+**Mise à jour — le dépôt s'appelle aujourd'hui [`a-toute-vapeur`](https://github.com/fcrozat/a-toute-vapeur), du titre du jeu.** La règle ci-dessus ne bouge pas : elle porte sur les mots du jeu, pas sur l'adresse du dépôt. Ce qui change est une ligne d'histoire, à savoir que l'option écartée ci-dessus était un renommage *descriptif* (`machine-a-vapeur`) ; celui qui a eu lieu prend le titre, et ne décrit plus l'installation du tout. Qui cherche le projet sous le mot « vapeur » le trouvera, sous « moteur » beaucoup moins.

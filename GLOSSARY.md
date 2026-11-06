@@ -1,4 +1,4 @@
-# Moteur-vapeur
+# À toute vapeur
 
 Jeu de construction : on bricole un engin mû par une machine à vapeur pour comprendre le cycle de la vapeur, le point mort et la distribution. Niveau CM2, en français.
 

@@ -2,7 +2,9 @@
 
 Issues and specs for this repo live as GitHub issues. Use the `gh` CLI for all operations.
 
-This repo: `fcrozat/moteur-vapeur` (private) — https://github.com/fcrozat/moteur-vapeur, remote `origin` over HTTPS, `gh` 2.102.0 authenticated as `fcrozat`.
+This repo: `fcrozat/a-toute-vapeur` (**public** since the rename — it used to be `fcrozat/moteur-vapeur`, which now redirects) — https://github.com/fcrozat/a-toute-vapeur, remote `origin` over HTTPS, `gh` authenticated as `fcrozat`.
+
+Because the repo is public, an issue body or comment is a published document: no paths outside the repo, no captured player data, no credentials in `gh api` output pasted into a comment.
 
 ## Conventions
 
