@@ -23,6 +23,13 @@
     #vitesse-mots { color: #f2b53c; text-transform: uppercase; font-size: .85rem; letter-spacing: .09em; }
     #situation { margin: 0; }
     #mot-de-situation { border: 1px solid #55636f; border-radius: 999px; padding: 3px 12px; }
+    /* La phrase de Braise : une ligne à lire à voix basse, posée sous la scène. Elle
+       est vide au lancement — rien ne parle avant qu'un fait nouveau n'arrive. */
+    #parole-de-braise { margin: 0; min-height: 1.5em; color: #f2b53c; font-size: 1.06rem; }
+    /* Le bouton qui coupe et rallume sa parole : une cible de 48 px, et son état se
+       lit aussi sans couleur — barrée, elle se tait. */
+    #braise { min-height: 48px; min-width: 118px; border-radius: 10px; border: 1px solid #55636f; background: #232a33; color: inherit; font: inherit; }
+    #braise[aria-pressed="false"] { text-decoration: line-through; color: #8d8272; }
     #pause { color: #f2b53c; }
     .reglage { display: flex; align-items: center; gap: 10px; }
     .etiquette { color: #9aa7b3; text-transform: uppercase; font-size: .78rem; letter-spacing: .08em; }
@@ -61,9 +68,14 @@
   <main id="atelier">
     <canvas id="scene" width="960" height="540" role="img"
             aria-label="La machine à vapeur en coupe, sur son chemin"></canvas>
+    <!-- Braise nomme ce qui vient de se passer, une fois. Le texte vient des règles
+         (`etat.braise`) : ici il n'y a pas un mot d'avance, et aucune réplique au
+         lancement. `aria-live` la lit tout bas quand elle ouvre la bouche. -->
+    <p id="parole-de-braise" aria-live="polite"></p>
     <section id="tableau" aria-label="Indicateurs de la machine">
       <p id="vitesse"><span id="vitesse-chiffres">0,0 km/h</span> <span id="vitesse-mots">sans élan</span></p>
       <p id="situation"><span id="mot-de-situation">À l’arrêt</span> <span id="pause" hidden>en pause</span></p>
+      <p><button id="braise" type="button" aria-pressed="true">Braise</button></p>
       <label class="reglage" for="feu">Feu
         <input id="feu" type="range" min="0" max="100" step="1" value="80">
         <output id="feu-dit" for="feu">80 %</output>
@@ -1068,10 +1080,22 @@ const reglesDuJeu = (() => {
     { aPartirDe: -Infinity, mots: 'vide' },
   ];
 
+  // Le mot se cale sur la part qui reste — c'est le ladder du chauffeur — mais la
+  // ligne rend aussi les litres (billet #8, signalé sur le billet #7) : brancher une
+  // seconde citerne fait passer « 84 % — pleine » à « 42 % — basse » à litres
+  // constants, et l'enfant lit que remplir a vidé. Le nombre ne bouge pas quand on
+  // ajoute de la capacité, le mot si ; ils se lisent ensemble.
   function reservoirVue(niveau, capacite) {
     const plein = capacite > 0 ? borne01(niveau / capacite) : 0;
     const note = MOTS_DE_NIVEAU.find((m) => plein >= m.aPartirDe);
-    return { niveau, capacite, plein, mot: note.mots };
+    const litres = Math.max(0, Math.round(niveau));
+    return {
+      niveau,
+      capacite,
+      plein,
+      mot: note.mots,
+      chiffres: litres.toLocaleString('fr-FR'),
+    };
   }
 
   function reservoirsVus(engin) {
@@ -1086,18 +1110,29 @@ const reglesDuJeu = (() => {
   // infini, ni « NaN ». Un 0 affiché avant la première pelletée enseignerait que
   // la machine a déjà consommé pour ne rien faire.
   const MOT_DU_RENDEMENT = 'distance par charbon';
+  // Un bilan négatif n'est pas un score, mais ce n'est pas une attente non plus
+  // (billet #7, trouvé par #18) : machine sans vapeur dans une rampe de 30 %, 545 m
+  // de descente en 200 s, 80,5 kg brûlés, rendement -6,8. Refuser ce nombre rendait
+  // « attend le charbon » faux deux fois — le charbon n'attend pas, et la machine
+  // n'attend rien : elle descend. Le nombre se montre avec son signe, le mot dit la
+  // descente, et ce n'est pas un chiffre de plus mais un état de la machine.
+  const MOT_DU_RETOUR = 'du charbon pour reculer';
   const RENDEMENT_EN_ATTENTE = 'attend le charbon';
 
   function rendementVu(engin) {
     const compte = engin.bilan();
     const valeur = compte.rendement;
-    if (typeof valeur !== 'number' || !Number.isFinite(valeur) || valeur < 0) {
+    // Rien de brûlé, rien à rendre : c'est là que le mot d'attente est vrai.
+    if (typeof compte.charbonBrule === 'number' && compte.charbonBrule <= 0) {
+      return { valeur: null, chiffres: null, mot: RENDEMENT_EN_ATTENTE };
+    }
+    if (typeof valeur !== 'number' || !Number.isFinite(valeur)) {
       return { valeur: null, chiffres: null, mot: RENDEMENT_EN_ATTENTE };
     }
     return {
       valeur,
       chiffres: `${valeur.toFixed(1).replace('.', ',')} m par kg`,
-      mot: MOT_DU_RENDEMENT,
+      mot: valeur < 0 ? MOT_DU_RETOUR : MOT_DU_RENDEMENT,
     };
   }
 
@@ -1460,7 +1495,10 @@ const reglesDuJeu = (() => {
       ambiante: modeleVapeur.PRESSION_AMBIANTE,
       fond: modeleVapeur.PRESSION_MAX,
       soupape: ZONE_SOUPAPE,
-      souffle: chaudiere.soupapeSiffle,
+      // Sans soupape à la machine, rien ne siffle à l'oreille : la vapeur part à plat
+      // joint. Le seuil vient du modèle, la présence de la pièce aussi (billet #7) —
+      // Prométhée ne peut pas promettre un bruit que l'enfant n'a pas où entendre.
+      souffle: chaudiere.soupapeSiffle && Boolean(engin.pieces.soupape),
     };
   }
 
@@ -1477,17 +1515,303 @@ const reglesDuJeu = (() => {
 
   // La mémoire du jeu : ce qui survit d'un essai à l'autre, et qui ne tient donc
   // ni dans l'engin ni dans l'image. Elle s'ouvre vide — aucun débloquage, aucun
-  // refroidissement, aucun record. Les tickets suivants y brancheront la Braise,
-  // le garage et le meilleur rendement ; ici elle ne sait encore rien.
+  // refroidissement, aucune phrase de Braise déjà dite.
+  //
+  // `braise` est la partie du billet #7 : le mot que l'écran nomme (`vue`), depuis
+  // quand la parole brute a basculé (`bascule`, `basculeA`, `bascules`), ce qu'elle
+  // a déjà nommé (`annoncee`, `absentes`, `dites`, `diteA` — des images de temps
+  // d'écran), si le bouton a coupé sa parole (`muet`), et le geste qui vient de
+  // rater (`geste`). Le refroidissement vit là et nulle part ailleurs : c'est ce qui
+  // le rend testable, et ce qui laisse à la projection le rôle d'une main.
   function nouvelleMemo() {
-    return { refroidissements: {}, deblocages: [], meilleurRendement: null };
+    return {
+      refroidissements: {},
+      deblocages: [],
+      meilleurRendement: null,
+      braise: {
+        muet: false,
+        vue: null,
+        bascule: 0,
+        situationPrecedente: null,
+        basculeA: 0,
+        bascules: 0,
+        tatonnee: false,
+        annoncee: null,
+        absentes: {},
+        dites: {},
+        diteA: -Infinity,   // aucune phrase encore : la première n'attend rien
+        geste: null,
+      },
+    };
   }
 
+
+  // --- Braise : ce qui vient de se passer, dit une fois ---------------------
+  //
+  // Braise est mécanicienne : elle nomme ce qui arrive, elle ne donne pas de leçon.
+  // Trois choses décident de sa parole, et aucune n'est une affaire du modèle :
+  //
+  //   1. ce qui vient de se passer (`ceQuiVientDeSePasser`) : un geste qui a raté,
+  //      une pièce partie au garage, une situation qui s'installe, une machine qui
+  //      tâtonne à son point mort ;
+  //   2. le temps qu'elle laisse entre deux phrases, tenu dans `memo` ;
+  //   3. le bouton qui coupe et rallume ses phrases (`basculerParole`).
+  //
+  // Le billet écrit `parole(situation, memo, t)`. La clef est un nom de situation,
+  // et trois des mensonges mesurés du ticket en ajoutent deux autres — une pièce à
+  // terre, un geste qui a raté. Même fonction, même ordre d'arguments.
+  //
+  // Le registre est celui du glossaire : une ligne de français, pas de formule, pas
+  // de nombre, pas d'anglais, et jamais une réparation proposée. Un montage qui cale
+  // a une cause : elle dit la cause et se tait.
+  const PAROLES = {
+    // Les sept situations de l'écran — chacune sa ligne, aucune ne se ressemble.
+    danger: 'La tôle travaille : la vapeur n’a plus rien pour la rendre.',
+    sec: 'La chaudière est à sec : l’eau ne revient pas jusqu’à elle.',
+    arret: 'Rien ne tourne plus : le feu ne pousse pas la machine.',
+    cale: 'Elle est prise à son point mort : la vapeur comprimée la retient.',
+    patine: 'L’acier glisse sur l’acier : la vapeur part en tours à vide.',
+    souffle: 'La soupape souffle : le foyer a brûlé du charbon pour rien.',
+    roule: 'Elle roule : la vapeur pousse et les roues la prennent.',
+    // Ce que le modèle fait, et qu'un seul des sept mots ne peut pas dire.
+    tatonne: 'Elle tâtonne : la vapeur la pousse d’un côté, le point mort la retient de l’autre.',
+    barre_echappee: 'La barre échappe : la manivelle tourne plus vite que les bras.',
+    // Les pièces que le modèle consulte (adr 0010), dans l’ordre où elle les regarde.
+    chaudiere: 'Plus de chaudière : la vapeur n’a plus où naître.',
+    foyer: 'Plus de foyer : rien ne chauffe plus la vapeur.',
+    soute: 'Plus de soute : le feu ne trouve plus de charbon à manger.',
+    citerne: 'Plus de citerne : l’eau n’a plus où attendre la chaudière.',
+    cylindre: 'Plus de cylindre : la vapeur n’a rien à pousser.',
+    tiroir: 'Plus de tiroir : la vapeur ne sait plus par où entrer.',
+    excentrique: 'Plus d’excentrique : le tiroir ne reçoit plus son avance.',
+    crosse: 'Plus de crosse : l’aller-retour du piston ne se transmet plus.',
+    bielle: 'Plus de bielle : le piston pousse pour personne.',
+    regulateur: 'Le régulateur est à terre : la vapeur passe sans être dosée.',
+    soupape: 'Plus de soupape : rien ne rend la vapeur de trop.',
+    roues: 'Plus de roues : l’arbre tourne et rien ne le prend.',
+    boite_a_fumee: 'Plus de boîte à fumée : la vapeur usée sort où elle peut.',
+  };
+
+  // Le pas de la montre de Braise : le vingtième de seconde que la projection se
+  // défend de dépasser par image (`PAS_MAX_PAR_IMAGE`, de l'autre côté du mur). Les
+  // trois temps qui suivent sont donc des secondes de temps d'écran, et une image
+  // vaut une image, au ×1 comme au ×4 — le palier de vitesse ne change que la durée
+  // qu'on donne à l'image, pas la longueur d'une seconde de machine.
+  const PAS_D_ECRAN = 1 / 20;
+
+  function imagesDe(t) {
+    // Arrondi à l'image près : les temps se comparent ensuite exactement, et une
+    // demi-seconde ne devient pas quarante-neuf images et neuf dixièmes.
+    return Math.round((Number(t) || 0) / PAS_D_ECRAN);
+  }
+
+  // TENUE_DU_MOT — le bégaiement est dans le modèle, pas dans l'affichage : le
+  // billet #6 a remesuré 73, 101 et 82 changements d'état selon l'angle d'arrêt, et
+  // la ligne 1882 (graine du jeu, lancée quarante secondes à ×4, deux cents secondes
+  // de marche, une image sur vingt de seconde) change de mot 763 fois, les bascules
+  // espacées de 0,05 seconde en médiane. Balayage du temps de tenue, en secondes,
+  // sur la même ligne : 0,05 -> 487 changements ; 0,1 -> 73 ; 0,2 -> 13 ; 0,3 -> 7 ;
+  // 0,4 -> 3 ; 0,5 -> 1 ; 0,75 -> 1 ; 1 -> 1 ; 2 -> 1. Le seul qui laisse un fait
+  // neuf passer sans laisser le clignotement, c'est une demi-seconde : dix images,
+  // soit dix fois le pas mesuré. Son prix, écrit à l'ADR 0011 : un fait déjà là met
+  // jusqu'à cinq images... jusqu'à une demi-seconde à être nommé. Le danger n'attend
+  // pas, parce que la tôle travaille à l'image où elle travaille.
+  const TENUE_DU_MOT = 0.5;
+  // ENTRE_DEUX — deux phrases ne se marchent pas dessus : le temps d'en lire une à
+  // voix basse. Deux secondes et demie, cinquante images.
+  const ENTRE_DEUX = 2.5;
+  // REFROIDISSEMENT — la même clef ne revient pas avant quinze secondes. Le bercement
+  // d'un arrêt mesuré par #17 dure 132 secondes, une secousse par seconde : à quinze
+  // secondes, la même phrase revient neuf fois sur deux minutes, et l'enfant qui
+  // martèle l'espace l'entend une fois par essai, pas une fois par image.
+  const REFROIDISSEMENT = 15;
+  // TATONNEMENT — trois bascules en moins d'un cinquième de seconde : ce n'est plus
+  // une situation qui change, c'est la même qui hésite. Les allers-retours de la
+  // ligne 1882 viennent par rafales espacées de 0,05 seconde.
+  const FENETRE_DE_TATONNEMENT = 0.2;
+  const BASCULES_POUR_TATONNER = 3;
+  // CALM_D_UN_TATONNEMENT — une rafale n'est finie qu'après deux secondes sans une
+  // seule bascule. Une phrase par bercement, pas une phrase par accalmie de trois
+  // images : sur la ligne 1882, le bercement dure deux minutes et Braise l'a dit
+  // onze fois avant cette borne.
+  const CALM_D_UN_TATONNEMENT = 2;
+
+  function braiseDe(memo) {
+    return memo ? memo.braise : null;
+  }
+
+  // La ligne d'une clef, si elle a le droit de parler maintenant. Sans mémoire,
+  // Braise ne sait pas ce qui vient de se passer : elle se tait, et rien ne se
+  // rappelle d'elle.
+  function parole(clef, memo, t) {
+    const ligne = PAROLES[clef];
+    const b = braiseDe(memo);
+    if (!ligne || !b || b.muet) return '';
+    const maintenant = imagesDe(t);
+    const deja = b.dites[clef];
+    if (deja !== undefined && maintenant - deja < imagesDe(REFROIDISSEMENT)) return '';
+    if (maintenant - b.diteA < imagesDe(ENTRE_DEUX)) return '';
+    b.dites[clef] = maintenant;
+    b.diteA = maintenant;
+    return ligne;
+  }
+
+  // La règle de tenue, écrite à part parce qu'elle est une décision de règles et
+  // qu'une promesse la lit : une situation nouvelle n'est nommée à l'écran qu'après
+  // avoir tenu `TENUE_DU_MOT`. Elle promet moins que le modèle, jamais plus : la
+  // parole brute reste accessible par `situation`, et l'attente ne prête à un instant
+  // ce qu'il n'a pas été.
+  function nommeLaSituation(b, brute, maintenant) {
+    if (b.vue === null) {
+      // Le premier coup d'œil ne parle pas : il pose la borne. Ce qui était déjà là
+      // quand l'écran s'est ouvert n'est pas un fait nouveau ; le prochain
+      // changement, lui, en est un.
+      b.vue = brute;
+      b.annoncee = brute;
+      b.bascule = maintenant;
+      return brute;
+    }
+    if (brute === b.vue) {
+      b.bascule = maintenant;
+      return b.vue;
+    }
+    if (brute === 'danger' || maintenant - b.bascule >= imagesDe(TENUE_DU_MOT)) {
+      b.vue = brute;
+      b.bascule = maintenant;
+    }
+    return b.vue;
+  }
+
+  function situationVue(engin, monde, memo, t) {
+    const brute = situation(engin, monde);
+    const b = braiseDe(memo);
+    if (!b) return brute;
+    return nommeLaSituation(b, brute, imagesDe(t === undefined ? engin.tempsEcoule : t));
+  }
+
+  // La machine hésite-t-elle ? Le compte regarde la parole brute, pas le mot tenu :
+  // trois bascules à moins d'un cinquième de seconde l'une de l'autre, et le point
+  // mort et la vapeur comprimée se disputent la machine sous les yeux de l'enfant
+  // (billet #6 : « le modèle hésite vraiment »). Un mot couvre alors les deux états.
+  function tatonne(b, brute, maintenant) {
+    if (b.situationPrecedente === null) {
+      b.situationPrecedente = brute;
+      b.basculeA = maintenant;
+    }
+    if (brute !== b.situationPrecedente) {
+      b.bascules = maintenant - b.basculeA <= imagesDe(FENETRE_DE_TATONNEMENT) ? b.bascules + 1 : 1;
+      b.situationPrecedente = brute;
+      b.basculeA = maintenant;
+    } else if (maintenant - b.basculeA > imagesDe(FENETRE_DE_TATONNEMENT)) {
+      b.bascules = 0;
+    }
+    return b.bascules >= BASCULES_POUR_TATONNER;
+  }
+
+  // Les pièces dont l'absence se voit à la machine, dans l'ordre où Braise les
+  // regarde. Chacune est consultée par le modèle (adr 0010) : sa ligne dit ce que la
+  // machine fait sans elle, jamais comment la remonter.
+  const PIECES_NOMMEES = [
+    'chaudiere', 'foyer', 'soute', 'citerne', 'cylindre', 'tiroir',
+    'excentrique', 'crosse', 'bielle', 'regulateur', 'soupape', 'roues', 'boite_a_fumee',
+  ];
+
+  // La pièce toute neuve à terre. Une pièce déjà nommée ne passe pas devant une
+  // pièce que personne n'a encore nommée : qui démonte deux organes entend parler
+  // des deux. Une pièce remontée libère son tour.
+  function pieceNouvelleAterre(b, engin) {
+    if (!engin || !engin.pieces) return null;
+    for (const id of PIECES_NOMMEES) {
+      if (engin.pieces[id]) delete b.absentes[id];
+      else if (!b.absentes[id]) return id;
+    }
+    return null;
+  }
+
+  // Ce qui vient de se passer, ou rien : le seul juge de sa parole. Au premier coup
+  // d'œil rien n'a encore été rencontré, et Braise se tait — aucune réplique au
+  // lancement, aucun écran d'aide, aucune fenêtre.
+  //
+  // L'ordre des clefs n'est pas un caprice : le geste qui vient de rater est la
+  // dernière chose que l'enfant a faite ; la pièce à terre est la cause de ce qui va
+  // suivre ; l'hésitation couvre deux mots qui se battent ; la situation nouvelle
+  // ferme la marche, parce qu'elle est ce qui reste quand rien d'autre ne bouge.
+  function ceQuiVientDeSePasser(engin, monde, memo, t) {
+    const b = braiseDe(memo);
+    if (!b) return null;
+    const brute = situation(engin, monde);
+    const maintenant = imagesDe(t === undefined ? engin.tempsEcoule : t);
+    const hesitation = tatonne(b, brute, maintenant);
+    const vue = nommeLaSituation(b, brute, maintenant);
+    const piece = pieceNouvelleAterre(b, engin);
+    const geste = b.geste;
+    b.geste = null;
+    // Une seule phrase par bercement : le mot ne se répète qu'après deux secondes
+    // sans une bascule, sinon chaque accalmie de trois images la ferait revenir.
+    if (maintenant - b.basculeA >= imagesDe(CALM_D_UN_TATONNEMENT)) b.tatonnee = false;
+    let clef = null;
+    if (geste !== null) clef = geste;
+    else if (piece !== null) clef = piece;
+    else if (hesitation && !b.tatonnee) clef = 'tatonne';
+    else if (vue !== b.annoncee) clef = vue;
+    if (clef === null) return null;
+    const ligne = parole(clef, memo, t === undefined ? engin.tempsEcoule : t);
+    // Bouton fermé, rien ne se met en file : le fait est regardé et laissé, et elle
+    // ne le rattrape pas quand on rouvre. Refroidie, elle garde au contraire le fait
+    // neuf et le nomme dès que sa respiration est prise. C'est la différence entre
+    // se taire et être tue.
+    if (ligne === '' && !b.muet) return null;
+    if (piece !== null) b.absentes[piece] = true;
+    if (hesitation) b.tatonnee = true;
+    b.annoncee = vue;
+    return ligne === '' ? null : { clef, mot: ligne };
+  }
+
+  // Ce que la projection lit de Braise : sa ligne pour cette image, vide les autres,
+  // et la situation que l'écran nomme — le badge, sa forme et sa phrase sortent de la
+  // même source, ils ne se contredisent pas.
+  function braiseVue(engin, monde, memo, t) {
+    const b = braiseDe(memo);
+    const instant = t === undefined ? engin.tempsEcoule : t;
+    if (!b) return { clef: null, mot: '', muet: false, situation: situation(engin, monde) };
+    const evenement = ceQuiVientDeSePasser(engin, monde, memo, instant);
+    return {
+      clef: evenement ? evenement.clef : null,
+      mot: evenement ? evenement.mot : '',
+      muet: b.muet,
+      situation: b.vue === null ? situation(engin, monde) : b.vue,
+    };
+  }
+
+  // Le bouton qui coupe et rallume ses phrases. Son état vit dans `memo` : une
+  // promesse peut le lire, et la projection n'est que la main qui appuie.
+  function basculerParole(memo) {
+    const b = braiseDe(memo);
+    b.muet = !b.muet;
+    return b.muet;
+  }
+
+  // Le coup de barre, avec sa parole. Les règles ne négocient pas avec la vitesse de
+  // la machine avant de la toucher (juste au-dessus, billet #17) : elles poussent,
+  // puis elles regardent si la barre a mordu. Au-dessus de deux radians par seconde
+  // le modèle refuse la secousse — physiquement juste, et muet : à seize kilomètres à
+  // l'heure la touche espace ne fait rien tourner, et une touche qui ne répond pas se
+  // lit comme un jeu cassé. Elle dit donc si la barre a mordu, et laisse à la
+  // prochaine image le soin de nommer la glisse.
+  function coupDeBarre(engin, memo) {
+    const avant = engin.machine.vitesseAngulaire;
+    engin.pousser();
+    const aMordu = engin.machine.vitesseAngulaire !== avant;
+    const b = braiseDe(memo);
+    if (!aMordu && b) b.geste = 'barre_echappee';
+    return aMordu;
+  }
   // L'unique interface lue par la projection (spec, décision 3). Si l'affichage
   // a besoin d'une valeur de plus, c'est ici qu'elle entre — jamais un plongeon
   // dans l'engin.
   function etatDuJeu(engin, monde, memo) {
-    const s = situation(engin, monde);
+    const braise = braiseVue(engin, monde, memo);
+    const s = braise.situation;
     return {
       situation: s,
       // Ce que le chauffeur a demandé, tel que le modèle le garde : l'écran rend
@@ -1521,6 +1845,10 @@ const reglesDuJeu = (() => {
       // ce mot, elle ne le devine pas : le soutage est une règle, pas un dessin.
       soutage: soutageVu(engin, monde),
       rendement: rendementVu(engin),
+      // La ligne de Braise pour cette image, et vide les fois d'après : la projection
+      // garde la dernière qu'elle a reçue, une phrase reste posée au lieu de
+      // clignoter au rythme d'une mémoire.
+      braise: { mot: braise.mot, clef: braise.clef, muet: braise.muet },
     };
   }
 
@@ -1530,7 +1858,11 @@ const reglesDuJeu = (() => {
     commandeDuCurseur, pourCentDuRegulateur, motDuRegulateur, motDuRobinet,
     piecesDeLetabli, limiteDePiece, brancherPiece, demonterPiece,
     VITESSES_DU_TEMPS, pasDeLImage, passerLImage,
-    nouvelleMemo, MOT_DU_RENDEMENT, RENDEMENT_EN_ATTENTE,
+    nouvelleMemo, MOT_DU_RENDEMENT, MOT_DU_RETOUR, RENDEMENT_EN_ATTENTE,
+    PAROLES, parole, situationVue, basculerParole, coupDeBarre, imagesDe,
+    pieceNouvelleAterre, PIECES_NOMMEES, PAS_D_ECRAN,
+    TENUE_DU_MOT, ENTRE_DEUX, REFROIDISSEMENT, FENETRE_DE_TATONNEMENT,
+    BASCULES_POUR_TATONNER, CALM_D_UN_TATONNEMENT,
     GRAINE_DU_JEU, SEUIL_DE_RAMPE, nombreDeLaGraine, ligneDeLaGraine, mondeDeLaLigne, mondeDeLaGraine,
     mondeSousLesRoues, prochaineRampe,
     soutage, DEBIT_DE_SOUTAGE,
@@ -1550,6 +1882,10 @@ const reglesDuJeu = (() => {
 
   const toile = document.getElementById('scene');
   const crayon = toile.getContext('2d');
+  // La dernière phrase que Braise a dite. La projection la garde : une phrase reste
+  // posée à l'écran au lieu de clignoter au rythme d'une mémoire qui ne parle qu'une
+  // fois. Elle ne contient aucun mot de Braise, seulement celui qu'elle a reçu.
+  let phraseDeBraise = '';
   const vues = {
     chiffres: document.getElementById('vitesse-chiffres'),
     allure: document.getElementById('vitesse-mots'),
@@ -1567,6 +1903,8 @@ const reglesDuJeu = (() => {
     souteDite: document.getElementById('soute-dite'),
     citerneDite: document.getElementById('citerne-dite'),
     soutageDit: document.getElementById('soutage-dit'),
+    braise: document.getElementById('parole-de-braise'),
+    braiseBouton: document.getElementById('braise'),
     rendementDit: document.getElementById('rendement-dit'),
     masseDite: document.getElementById('masse-dite'),
     garage: document.getElementById('garage-ouvrir'),
@@ -2247,15 +2585,21 @@ const reglesDuJeu = (() => {
     const n = Math.floor(tours);
     return `${n.toLocaleString('fr-FR')} tour${n > 1 ? 's' : ''}`;
   }
-  // Le niveau d'une soute ou d'une citerne : la part qui reste, et le mot du
-  // chauffeur. Les chiffres viennent de l'état du jeu, jamais d'un compteur d'écran.
+  // Le niveau d'une soute ou d'une citerne : le nombre qui ne bouge pas quand on
+  // ajoute de la capacité, et le mot du chauffeur qui bouge, lus ensemble (billet #7).
+  // Les deux viennent de l'état du jeu, jamais d'un compteur d'écran.
   function motsDeNiveau(reservoir) {
-    return `${Math.round(reservoir.plein * 100)} % — ${reservoir.mot}`;
+    return `${reservoir.chiffres} L — ${reservoir.mot}`;
   }
   // Le rendement se refuse : tant que le charbon dort, l'écran montre un tiret et
-  // le mot qui dit l'attente — jamais un zéro, jamais un « NaN ».
+  // le mot qui dit l'attente — jamais un zéro, jamais un « NaN ». Quand la machine
+  // rend un travail négatif, le nombre se montre avec son signe et le mot de la
+  // descente l'accompagne : le taire serait dire qu'elle attend.
   function motsDeRendement(rendement) {
-    return rendement.chiffres === null ? `— ${rendement.mot}` : rendement.chiffres;
+    if (rendement.chiffres === null) return `— ${rendement.mot}`;
+    return rendement.mot === R.MOT_DU_RENDEMENT
+      ? rendement.chiffres
+      : `${rendement.chiffres} — ${rendement.mot}`;
   }
 
   // --- Le garage : brancher, démonter, compter ---
@@ -2369,6 +2713,10 @@ const reglesDuJeu = (() => {
     // Le mot du soutage vient des règles, entier : la projection ne devine pas si
     // l'on est à un charbonnage, elle écrit ce que l'état en dit.
     ecrire(vues.soutageDit, etat.soutage.mot || '—');
+    // Braise : la règle dit si elle ouvre la bouche, la projection ne fait que
+    // recopier. Le bouton ne la fait pas taire sa mémoire, seulement la ligne.
+    if (etat.braise.mot) phraseDeBraise = etat.braise.mot;
+    ecrire(vues.braise, etat.braise.muet ? '' : phraseDeBraise);
     ecrire(vues.rendementDit, motsDeRendement(etat.rendement));
     dessineLetabli(etat);
   }
@@ -2394,7 +2742,13 @@ const reglesDuJeu = (() => {
   function coupDeBarre() {
     // Un geste, une secousse : le modèle l'ajoute au mouvement déjà là, dans le
     // sens de la marche. De quoi repartir du point mort, jamais de quoi freiner.
-    engin.pousser();
+    // Et si la barre échappe au-dessus de deux radians par seconde, ce sont les
+    // règles qui le savent et Braise qui le dit : l'écran n'invente pas son mot.
+    R.coupDeBarre(engin, memo);
+  }
+  function couperLaParole() {
+    const muet = R.basculerParole(memo);
+    vues.braiseBouton.setAttribute('aria-pressed', String(!muet));
   }
   function basculerPause() {
     enPause = !enPause;
@@ -2405,6 +2759,7 @@ const reglesDuJeu = (() => {
   vues.regulateur.addEventListener('input', () => reglerLeRegulateur(Number(vues.regulateur.value)));
   vues.barre.addEventListener('click', coupDeBarre);
   vues.garage.addEventListener('click', ouvrirLeGarage);
+  vues.braiseBouton.addEventListener('click', couperLaParole);
   vues.etabli.addEventListener('click', gesteDeLetabli);
   for (const bouton of vues.paliers) {
     bouton.addEventListener('click', () => choisirLaVitesseDeTemps(bouton.dataset.vitesse));

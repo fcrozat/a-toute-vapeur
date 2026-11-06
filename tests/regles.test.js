@@ -14,6 +14,7 @@
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import { chargerModele, chargerRegles, sourceModele, sourceRegles, sourceProjection } from './harnais.js';
 
 const M = chargerModele();
@@ -879,10 +880,17 @@ test('pour chaque situation nommée, l’écran ne demande que ce l’état du j
 
 test('la mémoire du jeu s’ouvre vide', () => {
   const memo = R.nouvelleMemo();
-  assert.deepEqual(memo, { refroidissements: {}, deblocages: [], meilleurRendement: null });
+  // Les trois cases vides d'avant, et depuis le billet #7 la mémoire de Braise, qui
+  // s'ouvre vide elle aussi : rien de dit, rien de refroidi, aucun mot retenu. Le
+  // détail de ses cases est promis plus bas, là où sa parole se décide.
+  const { braise, ...leReste } = memo;
+  assert.deepEqual(leReste, { refroidissements: {}, deblocages: [], meilleurRendement: null });
   assert.equal(Object.keys(memo.refroidissements).length, 0, 'la mémoire porte déjà des refroidissements');
   assert.equal(memo.deblocages.length, 0, 'la mémoire débloque déjà des pièces');
   assert.equal(memo.meilleurRendement, null, 'la mémoire connaît déjà un score');
+  assert.equal(braise.situationPrecedente, null, 'la mémoire compare déjà des situations');
+  assert.equal(Object.keys(braise.dites).length, 0, 'la mémoire a déjà un temps de refroidissement pris');
+  assert.equal(braise.vue, null, 'la mémoire retient déjà un mot de situation');
   assert.notEqual(R.nouvelleMemo(), memo, 'deux parties partageraient la même mémoire');
 });
 
@@ -1760,4 +1768,378 @@ test('le monde que l’image passe à la physique est celui sous les roues', () 
     false,
     'l’image passe la ligne entière à la physique : la rivière serait vraie partout',
   );
+});
+
+// --- Ticket 7 · Braise nomme ce qui vient de se passer ----------------------
+//
+// Braise est mécanicienne : elle nomme le fait nouveau, une fois, et elle se tait.
+// Ce qui décide de sa parole est dans `REGLES` et dans `memo` — donc tout cela se
+// lit ici, sans ouvrir un navigateur. Ce qui est écrit à l'écran, dans
+// `PROJECTION`, n’est testable que comme ligne : la projection n’a que des promesses
+// de mots, pas de mécanique de scène.
+//
+// Chaque promesse répond à une parole mesurée. Les chiffres sont gardés avec les
+// sondes dans ~/.cache/moteur-vapeur-verifs/ticket7/.
+
+// Ce qu'on veut d’une ligne : une phrase, pas une leçon, pas une formule, pas un
+// mot d'ailleurs. Les sept mensonges mesurés viennent après.
+const MOTS_D_AILLEURS = [
+  'ok', 'bug', 'boost', 'game', 'score', 'check', 'click', 'press', 'play', 'top',
+  'data', 'gear', 'brake', 'valve', 'engine', 'crew', 'jet', 'zoom', 'loop',
+  'glitch', 'crash', 'speed', 'power', 'steam', 'tank', 'start', 'stop',
+];
+
+// Toutes les clefs que Braise peut ouvrir : les sept situations, les deux états
+// qu'aucune situation ne nomme, et les pièces qui peuvent partir au garage.
+const CLEFS_NOMMEES = [
+  ...Object.keys(R.MOTS_DE_SITUATION), 'tatonne', 'barre_echappee', ...R.PIECES_NOMMEES,
+];
+
+test('une clef nommée rend une ligne de français, une seule, sans formule', () => {
+  const entendues = new Set();
+  for (const clef of CLEFS_NOMMEES) {
+    const ligne = R.parole(clef, R.nouvelleMemo(), 0);
+    assert.ok(ligne.length > 0, `« ${clef} » ne rend aucune ligne`);
+    assert.equal(ligne.includes('\n'), false, `« ${clef} » rend plus d’une ligne`);
+    assert.ok(ligne.length <= 92,
+      `« ${clef} » rend ${ligne.length} caractères : trop long pour être lu par un enfant de neuf ans`);
+    assert.equal(/[0-9]/.test(ligne), false, `« ${clef} » rend une ligne chiffrée : ${ligne}`);
+    assert.equal(/[=*/+<>%|^~_]/.test(ligne), false, `« ${clef} » rend une formule : ${ligne}`);
+    for (const mot of MOTS_D_AILLEURS) {
+      assert.equal(
+        new RegExp(`\\b${mot}\\b`, 'i').test(ligne), false,
+        `« ${clef} » emprunte le mot « ${mot} » : ${ligne}`,
+      );
+    }
+    entendues.add(ligne);
+  }
+  // « Deux situations différentes ne renvoient pas la même ligne » : deux mensonges
+  // mesurés se ressemblaient, « Patine » et « Calée » compris dans le même bercement.
+  assert.equal(entendues.size, CLEFS_NOMMEES.length, 'deux clefs nommées rendent la même ligne');
+});
+
+test('calage, souffle, à sec, patinage et danger ont chacun leur réplique', () => {
+  const attendues = ['cale', 'souffle', 'sec', 'patine', 'danger'];
+  const dites = attendues.map((clef) => R.parole(clef, R.nouvelleMemo(), 0));
+  assert.equal(new Set(dites).size, attendues.length, 'deux situations partagent la même réplique');
+  // Elle nomme une cause, jamais un ordre : « répare la chaudière » est un écran
+  // d'aide, et un montage qui cale a une cause que l'enfant doit pouvoir nommer.
+  for (const [clef, ligne] of attendues.map((c, i) => [c, dites[i]])) {
+    assert.equal(/répare|remonte|remets|rebranche|démonte|il faut|tu dois|pense à|essaie|devrais/.test(ligne), false,
+      `« ${clef} » donne un ordre au lieu de nommer : ${ligne}`);
+    assert.match(ligne, /[:.;]/, `« ${clef} » ne dit pas pourquoi : ${ligne}`);
+  }
+});
+
+test('Braise se tait tant que rien de nouveau n’a été rencontré', () => {
+  // Le lancement doit être silencieux : aucune réplique initiale, aucun écran d'aide.
+  const memo = R.nouvelleMemo();
+  const froide = machineVapeur({ feu: 0 });
+  rouler(froide, plaine(), { duree: 20 });
+  const premier = R.etatDuJeu(froide, plaine(), memo);
+  assert.equal(premier.situation, 'arret', 'la machine froide devrait être à l’arrêt');
+  assert.equal(premier.braise.mot, '', 'Braise ouvre la bouche avant qu’il se soit passé quoi que ce soit');
+  assert.equal(premier.braise.clef, null, 'Braise annonce une clef sans rien avoir dit');
+
+  // Le premier fait nouveau, lui, est nommé : la chaudière est montée à blanc.
+  const chauffee = machineVapeur();
+  rouler(chauffee, plaine(), { duree: 60 });
+  const second = R.etatDuJeu(chauffee, plaine(), memo);
+  assert.equal(second.situation, 'cale', 'la machine chauffée à blanc devrait être calée');
+  assert.equal(second.braise.clef, 'cale');
+  assert.equal(second.braise.mot, R.PAROLES.cale);
+});
+
+test('la même situation ne parle pas deux fois dans un temps de refroidissement', () => {
+  const memo = R.nouvelleMemo();
+  assert.equal(R.parole('cale', memo, 0), R.PAROLES.cale, 'la première fois se tait');
+  // Le temps est lu dans la mémoire : deux images plus tard, la même clef se tait.
+  assert.equal(R.parole('cale', memo, 0.05), '', 'la même clef a parlé deux fois');
+  assert.equal(R.parole('cale', memo, R.REFROIDISSEMENT - 0.2), '', 'la clef est parlée avant la fin du refroidissement');
+  assert.equal(R.parole('cale', memo, R.REFROIDISSEMENT + 0.2), R.PAROLES.cale, 'refroidie, elle ne revient pas');
+  // Et elle ne se marche pas dessus : une autre clef attend son tour, le temps d’une
+  // respiration, pour que deux phrases ne se chevauchent pas dans la même seconde.
+  const deux = R.nouvelleMemo();
+  assert.equal(R.parole('cale', deux, 0), R.PAROLES.cale);
+  assert.equal(R.parole('souffle', deux, 1), '', 'deux phrases partent dans le même souffle');
+  assert.equal(R.parole('souffle', deux, R.ENTRE_DEUX), R.PAROLES.souffle, 'la respiration est plus longue que l’attendu');
+  // C'est la mémoire qui tient les temps, pas une variable d'écran.
+  assert.equal(deux.braise.dites.cale, 0);
+  // Les temps de la mémoire sont comptés en images — une image est une image au ×1
+  // comme au ×4 — et se lisent donc en secondes par `imagesDe`.
+  assert.equal(deux.braise.dites.souffle, R.imagesDe(R.ENTRE_DEUX));
+});
+
+test('un bouton coupe et rallume ses phrases', () => {
+  const memo = R.nouvelleMemo();
+  assert.equal(R.basculerParole(memo), true, 'le premier coup de bouton ne coupe rien');
+  assert.equal(R.parole('danger', memo, 0), '', 'la parole court encore bouton fermé');
+  assert.equal(R.parole('danger', memo, 400), '', 'rien ne se dit pendant le silence');
+  assert.equal(memo.braise.dites.danger, undefined, 'le silence a tout de même compté la réplique');
+  assert.equal(R.basculerParole(memo), false, 'le second coup ne rallume pas');
+  assert.equal(R.parole('danger', memo, 1), R.PAROLES.danger, 'rouvert, elle reprend là où elle en était');
+
+  // Et ce qu’elle n’a pas dit pendant le silence ne se met pas en file d'attente.
+  const suite = R.nouvelleMemo();
+  const froide = machineVapeur({ feu: 0 });
+  rouler(froide, plaine(), { duree: 20 });
+  R.etatDuJeu(froide, plaine(), suite);
+  R.basculerParole(suite);
+  const chauffee = machineVapeur();
+  rouler(chauffee, plaine(), { duree: 60 });
+  assert.equal(R.etatDuJeu(chauffee, plaine(), suite).braise.mot, '', 'elle parle bouton fermé');
+  R.basculerParole(suite);
+  assert.equal(R.etatDuJeu(chauffee, plaine(), suite).braise.mot, '',
+    'elle rattrape la phrase que le silence lui a fait manquer');
+});
+
+test('le mot de la situation ne clignote pas devant neuf ans', () => {
+  // Le mensonge mesuré n°3 : la ligne du jeu, lancée quarante secondes à quatre
+  // fois la vitesse, puis deux cents secondes de marche. L'image brute changeait de
+  // mot 763 fois, la plus courte intervalle à un vingtième de seconde.
+  const monde = R.mondeDeLaGraine(1882);
+  const engin = M.nouvelEngin(R.PIECES_DE_BASE);
+  engin.commandes.feu = 0.8;
+  engin.commandes.regulateur = R.commandeDuCurseur(100);
+  R.passerLImage(engin, R.mondeSousLesRoues(engin, monde), { duree: 40 });
+  engin.pousser();
+
+  const memo = R.nouvelleMemo();
+  let brutes = 0;
+  let tenues = 0;
+  let avantBrut = null;
+  let avantTenu = null;
+  let t = 0;
+  while (t < 200) {
+    const sousLaRoue = R.mondeSousLesRoues(engin, monde);
+    R.passerLImage(engin, sousLaRoue, { duree: PAS_IMAGE });
+    R.soutage(engin, sousLaRoue, PAS_IMAGE);
+    t += PAS_IMAGE;
+    const brut = R.situation(engin, sousLaRoue);
+    const tenu = R.etatDuJeu(engin, monde, memo).mot;
+    if (avantBrut !== null && brut !== avantBrut) brutes++;
+    if (avantTenu !== null && tenu !== avantTenu) tenues++;
+    avantBrut = brut;
+    avantTenu = tenu;
+  }
+  assert.ok(brutes >= 100, `la parole brute ne clignotait plus (${brutes}) : la promesse ne prouve plus rien`);
+  assert.ok(tenues <= Math.max(1, Math.round(brutes / 100)),
+    `le mot tenu a changé ${tenues} fois contre ${brutes} à la parole brute`);
+});
+
+test('une situation qui se cherche a un mot qui la couvre', () => {
+  // Le tâtonnement mesuré : dans sa bande morte la machine se balance, et le mot
+  // d'à-côté passait son temps entre « Patine » et « Calée ». Un mot les couvre, et
+  // il dit les deux causes — le point mort et la vapeur qui pousse dedans.
+  const monde = R.mondeDeLaGraine(1882);
+  const engin = M.nouvelEngin(R.PIECES_DE_BASE);
+  engin.commandes.feu = 0.8;
+  engin.commandes.regulateur = R.commandeDuCurseur(100);
+  R.passerLImage(engin, R.mondeSousLesRoues(engin, monde), { duree: 40 });
+  engin.pousser();
+  const memo = R.nouvelleMemo();
+  let bascules = 0;
+  let avant = null;
+  const dite = [];
+  let t = 0;
+  while (t < 45) {
+    const sousLaRoue = R.mondeSousLesRoues(engin, monde);
+    R.passerLImage(engin, sousLaRoue, { duree: PAS_IMAGE });
+    R.soutage(engin, sousLaRoue, PAS_IMAGE);
+    t += PAS_IMAGE;
+    const brut = R.situation(engin, sousLaRoue);
+    if (avant !== null && brut !== avant) bascules++;
+    avant = brut;
+    if (R.etatDuJeu(engin, monde, memo).braise.clef === 'tatonne') dite.push(t);
+  }
+  assert.ok(bascules >= 10, `le bercement n’a pas été trouvé (${bascules} bascules en 45 s)`);
+  assert.equal(dite.length > 0, true, 'le bercement n’a jamais été nommé');
+  // Une phrase par bercement, pas une phrase par image : entre deux fois où elle dit
+  // la même chose, il y a au moins un temps de refroidissement — ici quinze secondes,
+  // alors que la parole brute changeait de nom toutes les vingt images.
+  assert.ok(dite.length <= 3, `le bercement a été nommé ${dite.length} fois en 45 secondes`);
+  for (let i = 1; i < dite.length; i++) {
+    assert.ok(dite[i] - dite[i - 1] >= R.REFROIDISSEMENT - PAS_IMAGE,
+      `deux fois « elle tâtonne » à ${(dite[i] - dite[i - 1]).toFixed(2)} secondes d’écart`);
+  }
+  assert.match(R.PAROLES.tatonne, /point mort/, 'le mot qui couvre ne dit pas le point mort');
+  assert.match(R.PAROLES.tatonne, /vapeur/, 'le mot qui couvre ne dit pas la vapeur');
+});
+
+// La machine du garage sans sa soupape : rien ne limite plus la vapeur. Le
+// `machineVapeur` du fichier ajoute des pièces au catalogue, il n'en retire pas.
+function machineSansSoupape({ regulateur = 0 } = {}) {
+  const engin = M.nouvelEngin(MACHINE.filter((id) => id !== 'soupape'));
+  engin.soute = 4000;
+  engin.citerne = 4000;
+  engin.commandes.feu = 1;
+  engin.commandes.regulateur = regulateur;
+  return engin;
+}
+
+test('le danger passe devant la patience', () => {
+  // Une tôle qui travaille n'attend pas la fin d’une tenue de mot : la règle qui
+  // arrête le clignotement ne doit pas retarder ce qui peut faire mal.
+  const memo = R.nouvelleMemo();
+  const roulante = machineVapeur();
+  const plat = plaine();
+  rouler(roulante, plat, { duree: 60 });
+  roulante.pousser(4);
+  rouler(roulante, plat, { duree: 20 });
+  assert.equal(R.etatDuJeu(roulante, plat, memo).situation, 'roule', 'la machine devrait rouler');
+  // Le charbon du monde se consomme : chaque machine regarde le sien.
+  const enDanger = machineSansSoupape();
+  const rampe = plaine();
+  rouler(enDanger, rampe, { duree: 90 });
+  assert.equal(R.situation(enDanger, rampe), 'danger', 'la machine sans soupape devrait être en danger');
+  assert.equal(R.situationVue(enDanger, rampe, memo, 1000), 'danger', 'le danger a attendu une tenue de mot');
+});
+
+test('la pièce qui part au garage est nommée', () => {
+  // Le mensonge mesuré n°4 : enlever la chaudière arrêtait la machine, et Braise
+  // restait muette — le joueur ne pouvait que croire que la machine était cassée.
+  const monde = plaine();
+  const engin = machineVapeur();
+  const memo = R.nouvelleMemo();
+  rouler(engin, monde, { duree: 60 });
+  R.etatDuJeu(engin, monde, memo);
+  assert.equal(R.demonterPiece(engin, memo, 'chaudiere'), true, 'la chaudière ne se démonte pas');
+  const etat = R.etatDuJeu(engin, monde, memo);
+  assert.equal(etat.braise.clef, 'chaudiere', 'la pièce qui vient de partir n’est pas nommée');
+  assert.equal(etat.braise.mot, R.PAROLES.chaudiere);
+  assert.match(etat.braise.mot, /chaudière/, 'la ligne ne nomme pas la pièce');
+  // Une seule fois : la pièce est toujours à terre trois secondes plus tard.
+  rouler(engin, monde, { duree: 3 });
+  assert.equal(R.etatDuJeu(engin, monde, memo).braise.mot, '', 'elle répète la pièce qui est toujours à terre');
+});
+
+test('retirer le régulateur ouvre la vapeur en grand, et elle le dit', () => {
+  // Le mensonge mesuré n°6 : le geste le plus tranquille de l'établi est le plus
+  // violent. Machine posée, régulateur fermé, on l'emporte : le robinet s'ouvre
+  // seul, et une secousse suffit pour qu’elle reparte.
+  const monde = plaine();
+  const engin = machineVapeur({ regulateur: 0 });
+  const memo = R.nouvelleMemo();
+  rouler(engin, monde, { duree: 60 });
+  R.etatDuJeu(engin, monde, memo);
+  assert.equal(R.etatDuJeu(engin, monde, memo).commandes.regulateur, 0, 'le régulateur devrait être fermé');
+  R.demonterPiece(engin, memo, 'regulateur');
+  const etat = R.etatDuJeu(engin, monde, memo);
+  assert.equal(etat.commandes.mot, 'grand ouvert', 'le robinet ne s’est pas ouvert tout seul');
+  assert.equal(etat.braise.clef, 'regulateur', 'le vol de régulateur n’est pas nommé');
+  const avant = engin.distance;
+  R.coupDeBarre(engin, memo);
+  rouler(engin, monde, { duree: 20 });
+  assert.ok(engin.distance - avant > 20, `elle n’a pas redémarré seule (${(engin.distance - avant).toFixed(1)} m)`);
+});
+
+test('au régime où la barre échappe, le geste muet a son mot', () => {
+  // Le mensonge mesuré n°5 : au-dessus de deux radians par seconde — seize
+  // kilomètres-heure — la barre échappe aux mains, donc la barre espace ne fait
+  // absolument rien, sans que l'écran le dise (billet #17).
+  const monde = plaine();
+  const basse = machineVapeur();
+  const memo = R.nouvelleMemo();
+  basse.machine.vitesseAngulaire = 1.5;
+  assert.equal(R.coupDeBarre(basse, memo), true, 'à cinq kilomètres-heure la barre ne mord pas');
+  assert.ok(basse.machine.vitesseAngulaire > 1.5, 'la secousse n’a rien ajouté au mouvement');
+  assert.equal(R.etatDuJeu(basse, monde, memo).braise.clef, null, 'un geste qui mord est nommé');
+
+  const haute = machineVapeur();
+  haute.machine.vitesseAngulaire = 2.4;
+  const avant = haute.machine.vitesseAngulaire;
+  assert.equal(R.coupDeBarre(haute, memo), false, 'à seize kilomètres-heure la barre mord encore');
+  assert.equal(haute.machine.vitesseAngulaire, avant, 'le modèle a bougé : la barre, elle, n’a rien fait');
+  const etat = R.etatDuJeu(haute, monde, memo);
+  assert.equal(etat.braise.clef, 'barre_echappee', 'le geste muet reste sans mot');
+  assert.equal(etat.braise.mot, R.PAROLES.barre_echappee);
+});
+
+test('sans soupape à la machine, la jauge ne dit pas qu’elle souffle', () => {
+  // Le mensonge mesuré n°7 : la jauge affirmait un souffle que la machine ne
+  // pouvait pas faire, la soupape étant partie au garage.
+  const monde = plaine();
+  const sansSoupape = machineSansSoupape({ regulateur: 1 });
+  rouler(sansSoupape, monde, { duree: 90 });
+  assert.equal(sansSoupape.chaudiere.soupapeSiffle, true, 'le modèle dit le sifflement, lui');
+  const etat = R.etatDuJeu(sansSoupape, monde, R.nouvelleMemo());
+  assert.equal(etat.jauge.souffle, false, 'la jauge annonce un sifflement impossible');
+  assert.equal(etat.situation, 'danger', 'le danger, lui, doit passer');
+  // Remontée, la soupape souffle : ce n’est pas la jauge qui est devenue muette.
+  const avecSoupape = machineVapeur({ regulateur: 0.3 });
+  const airLibre = plaine();
+  rouler(avecSoupape, airLibre, { duree: 60 });
+  avecSoupape.pousser(4);
+  rouler(avecSoupape, airLibre, { duree: 60 });
+  assert.equal(avecSoupape.chaudiere.soupapeSiffle, true, 'le sifflement de référence manque');
+  assert.equal(R.etatDuJeu(avecSoupape, monde, R.nouvelleMemo()).jauge.souffle, true,
+    'la soupape remontée ne souffle plus à la jauge');
+});
+
+test('un rendement qui descend est montré, pas dit comme une attente', () => {
+  // Le mensonge mesuré n°1 : la machine dévale la rampe du bout, le charbon
+  // continue de brûler, et l'écran écrivait « attend le charbon » au moment précis
+  // où le charbon travaillait. Mesuré : -545,5 m pour 80,5 kg, soit -6,8.
+  const monde = plaine({ pente: 0.3 });
+  const engin = machineVapeur();
+  rouler(engin, monde, { duree: 50 });
+  engin.pousser(4);
+  rouler(engin, monde, { duree: 60 });
+  engin.commandes.regulateur = 0;
+  rouler(engin, monde, { duree: 120 });
+  const bilan = engin.bilan();
+  assert.ok(bilan.distance < 0, `la machine n’a pas reculé (${bilan.distance.toFixed(1)} m)`);
+  assert.ok(bilan.charbonBrule > 0, 'le charbon ne brûle plus : la promesse ne prouve plus rien');
+  const rendu = R.etatDuJeu(engin, monde, R.nouvelleMemo()).rendement;
+  assert.equal(rendu.valeur, bilan.rendement, 'l’écran ne montre pas le nombre du modèle');
+  assert.notEqual(rendu.mot, R.RENDEMENT_EN_ATTENTE, 'l’écran dit « attend le charbon » pendant que le charbon brûle');
+  assert.equal(rendu.mot, R.MOT_DU_RETOUR);
+  assert.match(rendu.chiffres, /^-/, 'le signe est mangé : un nombre négatif lu comme une distance');
+  // Et l'attente garde son mot : charbon dormi, travail nul, ce n’est pas une descente.
+  const froide = machineVapeur({ feu: 0 });
+  rouler(froide, plaine(), { duree: 20 });
+  const attend = R.etatDuJeu(froide, plaine(), R.nouvelleMemo()).rendement;
+  assert.equal(attend.mot, R.RENDEMENT_EN_ATTENTE, 'le mot d’attente a disparu de l’écran');
+  assert.equal(attend.chiffres, null, 'l’attente affiche un nombre');
+});
+
+test('le mot du réservoir ne fait pas semblant de boire quand on agrandit', () => {
+  // Le mensonge mesuré n°2 : les mêmes 202 litres se disaient « pleine » dans une
+  // citerne et « basse » dans deux. Le rapport seul ment dès qu'on ajoute de la
+  // capacité, donc l'écran lit le nombre en litres à côté du mot du chauffeur.
+  const engin = machineVapeur();
+  engin.citerne = 202;
+  const une = R.etatDuJeu(engin, plaine(), R.nouvelleMemo()).reservoirs.citerne;
+  assert.equal(R.brancherPiece(engin, R.nouvelleMemo(), 'citerne'), true, 'la seconde citerne ne se branche pas');
+  const deux = R.etatDuJeu(engin, plaine(), R.nouvelleMemo()).reservoirs.citerne;
+  assert.equal(une.niveau, 202);
+  assert.equal(deux.niveau, 202, 'les litres ont bougé sans qu’on boive');
+  assert.equal(une.chiffres, deux.chiffres, 'le nombre lu à l’écran bouge sans qu’on boive');
+  assert.notEqual(une.mot, deux.mot, 'le mot du chauffeur ne bouge pas, lui');
+  assert.match(une.chiffres, /202/, 'le nombre de litres n’est pas lisible');
+});
+
+test('la ligne de Braise est à l’écran, et le bouton avec', () => {
+  // Ce que la projection doit tenir, promis comme une ligne : l'endroit où sa
+  // phrase se pose, le bouton qui la coupe, et rien d'écrit d’avance dans le marbre.
+  const marbre = readFileSync(new URL('../index.html', import.meta.url), 'utf8');
+  assert.match(marbre, /<p id="parole-de-braise"[^>]*><\/p>/,
+    'la phrase de Braise a une place à l’écran, mais elle y est écrite d’avance');
+  assert.match(marbre, /aria-live/, 'la phrase de Braise n’est pas lue tout bas à qui ne voit pas la scène');
+  assert.match(marbre, /<button id="braise"[^>]*aria-pressed="true"[^>]*>/,
+    'le bouton qui coupe sa parole est absent, ou son état ne se lit pas');
+});
+
+test('la projection écoute Braise sans rien décider', () => {
+  const source = sourceProjection();
+  // Les mots viennent de `REGLES` : la projection n'invente pas de réplique et ne
+  // tient pas son propre temps de refroidissement — sinon rien de tout cela ne se
+  // teste sans navigateur.
+  assert.match(source, /R\.coupDeBarre/, 'le coup de barre n’est pas passé aux règles : le geste muet restera sans mot');
+  assert.match(source, /R\.basculerParole/, 'le bouton de silence ne passe pas par les règles');
+  assert.match(source, /etat\.braise\.mot/, 'la phrase de Braise n’est pas lue de l’état du jeu');
+  assert.match(source, /etat\.braise\.muet/, 'le silence de Braise n’est pas lu de l’état du jeu');
+  for (const [clef, ligne] of Object.entries(R.PAROLES)) {
+    assert.equal(source.includes(ligne), false, `la parole « ${clef} » est dupliquée dans la projection`);
+  }
 });
