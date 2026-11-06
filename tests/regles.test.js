@@ -947,7 +947,7 @@ test('la ligne part à plat, se cabre, passe une rivière, s’arrête à un cha
 
     assert.equal(ligne.pente, 0, ou('le fond n’est pas plat'));
     const premiereRampe = Math.min(...ligne.bosses.map((b) => b.a));
-    assert.ok(premiereRampe >= 28, ou(`la première rampe arrive à ${premiereRampe} m : pas le temps de prendre de l'élan`));
+    assert.ok(premiereRampe >= 24, ou(`la première rampe arrive à ${premiereRampe} m : pas le temps de prendre de l'élan`));
 
     const douces = ligne.bosses.filter((b) => b.pente >= 0.1 && b.pente < 0.2);
     const raides = ligne.bosses.filter((b) => b.pente >= 0.24);
@@ -1046,5 +1046,67 @@ test('la première bosse de la ligne se gravit lancée et retient la machine au 
     }
     assert.ok(Math.abs(auPas.distance - ancre) < 0.5, ou('la machine au pas avance encore après deux minutes'));
     assert.ok(dite > 0, ou('le mot « Calée » n’apparaît jamais pendant l’arrêt'));
+  }
+});
+
+// La scène que le billet demande : dans la rampe qui la refuse, les roues
+// tournent, le sol reste en place, le charbon part pour rien — et l'écran a le
+// mot à dire. C'est la rampe du bout de la ligne, celle après laquelle il n'y a
+// plus de chemin.
+test('dans la rampe du bout, les roues tournent et le sol n’avance pas', () => {
+  for (const graine of [1, 7, 11, 42, 1882, 99999]) {
+    const monde = R.mondeDeLaGraine(graine);
+    const raide = monde.bosses.filter((b) => b.pente >= 0.24).sort((une, autre) => une.a - autre.a)[0];
+    const ou = (chose) => `${chose} (graine ${graine}, rampe à ${raide.a} m à ${raide.pente})`;
+
+    const engin = machineVapeur();
+    rouler(engin, monde, { duree: CHAUFFE });
+    engin.pousser(0.4);
+    roulerJusquA(engin, monde, raide.a - 0.5, 400);
+
+    const distanceAuPied = engin.distance;
+    const toursAuPied = engin.machine.tours;
+    const charbonAuPied = engin.charbonBrule;
+    let patine = 0;
+    for (let t = 0; t < 60; t += PAS) {
+      M.pasDeTemps(engin, monde, PAS);
+      if (R.situation(engin, monde) === 'patine') patine += PAS;
+    }
+    const metres = engin.distance - distanceAuPied;
+    const tours = engin.machine.tours - toursAuPied;
+    const charbon = engin.charbonBrule - charbonAuPied;
+
+    assert.ok(patine >= 5, ou(`le mot « Patine » ne tient pas à l'écran : ${patine.toFixed(1)} s`));
+    assert.ok(tours > 2, ou(`les roues ne tournent pas : ${tours.toFixed(1)} tour`));
+    assert.ok(metres < 5, ou(`le sol avance avec les roues : ${metres.toFixed(1)} m en une minute`));
+    assert.ok(charbon > 5, ou(`le charbon ne brûle pas pendant qu'elle patine : ${charbon.toFixed(1)} kg`));
+  }
+});
+
+// La ligne se lit avec les pleins du catalogue : 300 kg de charbon, 240 unités
+// d'eau. C'est l'eau qui borne, jamais le charbon — et la rampe du bout tombe
+// juste là où l'eau finit, une fois la rivière et le charbonnage passés.
+test('la ligne tient dans ce que la machine emporte : un plein d’eau la mène au pied de la rampe du bout', () => {
+  for (const graine of [1, 7, 11, 42, 1882, 99999]) {
+    const monde = R.mondeDeLaGraine(graine);
+    const ligne = R.ligneDeLaGraine(graine);
+    const raide = ligne.bosses.filter((b) => b.pente >= 0.24)[0];
+    const ou = (chose) => `${chose} (graine ${graine})`;
+
+    const engin = M.nouvelEngin(R.PIECES_DE_BASE);
+    engin.commandes.feu = 1;
+    engin.commandes.regulateur = 1;
+    rouler(engin, monde, { duree: CHAUFFE });
+    engin.pousser(0.4);
+    let t = CHAUFFE;
+    while (t < 400 && Math.abs(engin.vitesse()) > 0.02) {
+      M.pasDeTemps(engin, monde, PAS);
+      t += PAS;
+    }
+
+    assert.ok(engin.distance >= raide.a - 0.5, ou(`l'engin n'atteint pas le pied de la rampe du bout : ${engin.distance.toFixed(0)} m sur ${raide.a}`));
+    assert.ok(ligne.riviere.a < engin.distance, ou("l'engin n'atteint pas la rivière sur un plein d'eau"));
+    assert.ok(ligne.charbonnage.a < engin.distance, ou("l'engin n'atteint pas le charbonnage sur un plein d'eau"));
+    assert.ok(engin.soute > 200, ou(`le charbon borne avant l'eau : ${engin.soute.toFixed(0)} kg restants`));
   }
 });

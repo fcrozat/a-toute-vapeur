@@ -962,23 +962,23 @@ const reglesDuJeu = (() => {
     const entier = (min, max) => min + Math.round(tire() * (max - min));
     const pente = (min, max) => Math.round((min + tire() * (max - min)) * 100) / 100;
 
-    const plat = entier(24, 30);              // le seul endroit où l'on prend de l'élan
-    const palier = entier(16, 20);
+    const plat = entier(24, 26);              // le seul endroit où l'on prend de l'élan
+    const palier = entier(12, 14);
     const penteDouce = pente(0.12, 0.16);     // passée lancée, refusée au pas
     const berge = 5;                          // de quoi descendre à l'eau et en remonter
-    const gue = entier(12, 15);
+    const gue = entier(10, 12);
     const longueurDuCharbonnage = 8;
-    const longueurDuVent = entier(12, 16);
+    const longueurDuVent = entier(12, 14);
     const forceDuVent = pente(0.45, 0.9);
-    const penteRaide = pente(0.26, 0.32);     // là où les roues tournent dans le vide
+    const penteRaide = pente(0.28, 0.34);     // là où les roues tournent dans le vide
     const longueurDeLaRampe = entier(22, 26);
 
     const aBosse = plat;
-    const aRiviere = aBosse + 2 * palier + 4;
-    const aCharbon = aRiviere + 2 * berge + gue + 5;
-    const aVent = aCharbon + longueurDuCharbonnage + 5;
+    const aRiviere = aBosse + 2 * palier + 2;
+    const aCharbon = aRiviere + 2 * berge + gue + 2;
+    const aVent = aCharbon + longueurDuCharbonnage + 2;
     // La rampe qui la refuse ferme la ligne : après elle, il n'y a plus de chemin.
-    const aRampe = aVent + longueurDuVent + 5;
+    const aRampe = aVent + longueurDuVent + 2;
 
     return {
       graine: g,
