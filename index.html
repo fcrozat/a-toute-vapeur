@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>À toute vapeur</title>
   <!--
-    À toute vapeur — un engin, une chaudière, et douze promesses tenues.
+    À toute vapeur — un engin, une chaudière, et dix-sept promesses tenues.
     Licence : AGPLv3 pour le code (voir LICENSE) ; CC BY-SA 4.0 pour les dessins,
     les textes de Braise et les sons. Dépôt : https://github.com/fcrozat/moteur-vapeur
   -->
@@ -106,6 +106,8 @@ const modeleVapeur = (() => {
   const OUVERTURE_MIN = 0.05;
   const AVANCE_NOMINALE = 0.5;    // l'excentrique, calé en avant de 0,5 rad
   const RECOUVREMENT = 0.45;      // le tiroir recouvre largement ses lumières
+  const COUP_DE_LA_BARRE = 0.4;   // rad/s : ce que deux bras pèsent sur la manivelle
+  const VITESSE_DE_LA_BARRE = 2;  // rad/s : au-dessus, la barre échappe aux mains
 
   // Sol, roues, inertie
   const GRAVITE = 9.81;
@@ -231,7 +233,9 @@ const modeleVapeur = (() => {
     const pressionFace = (admet, echappe, scelleeAvant, vOld, vNew) => {
       if (admet) return pressionAdmission;
       if (echappe) return PRESSION_AMBIANTE;
-      return poly(scelleeAvant, vOld, vNew);
+      // Une face couverte ne fait pas le vide dehors : ce qui passe les segments
+      // y rentre par le même chemin. Le ressort de vapeur pousse, il ne tire pas.
+      return Math.max(PRESSION_AMBIANTE, poly(scelleeAvant, vOld, vNew));
     };
     const pAvant = pressionFace(admetAvant, o.echappeAvant, scellee.avant, volumes.avant, vAvant);
     const pArriere = pressionFace(admetArriere, o.echappeArriere, scellee.arriere, volumes.arriere, vArriere);
@@ -358,10 +362,18 @@ const modeleVapeur = (() => {
       mouvement() {
         return Math.abs(this.machine.vitesseAngulaire) > 1e-3;
       },
-      // Le coup de barre du chauffeur : un élan, pas un moteur. Personne ne
-      // démarre tout seul au point mort, pas même la mieux réglée des machines.
-      pousser(vitesse = 0.4) {
-        this.machine.vitesseAngulaire = this.machine.marche === 'arriere' ? -vitesse : vitesse;
+      // Le coup de barre du chauffeur : une secousse qui s'ajoute au mouvement déjà
+      // là, dans le sens de la marche. Ni un moteur, ni une bride : personne ne
+      // démarre tout seul au point mort, pas même la mieux réglée des machines, et
+      // une machine lancée ne doit jamais trouver dans la barre de quoi se ralentir.
+      //
+      // Mais un homme ne pousse que ce qu'il peut suivre : la barre n'a plus de prise
+      // sur une manivelle qui tourne plus vite que ses bras. Sans cette borne, la
+      // marteler tiendrait lieu de charbon, ce qu'elle n'a jamais fait.
+      pousser(vitesse = COUP_DE_LA_BARRE) {
+        const sens = this.machine.marche === 'arriere' ? -1 : 1;
+        if (Math.abs(this.machine.vitesseAngulaire) >= VITESSE_DE_LA_BARRE) return this;
+        this.machine.vitesseAngulaire += sens * vitesse;
         this.machine.cale = false;
         return this;
       },
@@ -471,11 +483,22 @@ const modeleVapeur = (() => {
       ? (remplissage / dt) * CONSO_PAR_VOLUME + FUITE_MACHINE * (pression - PRESSION_AMBIANTE)
       : 0;
     const eolipyle = engin.pieces.eolipyle ? CONSO_EOLIPYLE * clamp01(c.eolipyle) * (pression - PRESSION_AMBIANTE) : 0;
+    // Le régulateur est un passage étroit entre la chaudière et le cylindre : une
+    // résistance, pas un compteur. Tout ce que le cylindre demande doit franchir
+    // l'étranglement, et le paie en pression ; la chute se calcule donc sur la
+    // DEMANDE, et le débit prélevé est ce que le passage laisse passer sous la
+    // différence ainsi obtenue. L'ordre inverse — écrêter le débit, puis diviser
+    // ce débit écrêté par la conductance — annulait la chute dès que le passage se
+    // fermait d'aplomb : conductance à zéro, chute à zéro, vapeur vive à la
+    // pression pleine de la chaudière, et un travail que personne ne paye.
+    // Plancher à la pression ambiante est une limite assumée du modèle : une vraie
+    // machine à régulation fermée pompe sous la pression du jour, ce qui la retient
+    // encore davantage (ADR 0009).
     const conductance = engin.pieces.regulateur ? CONDUCTANCE_MAX * clamp01(c.regulateur) : CONDUCTANCE_MAX;
-    const traverse = Math.min(demande, conductance * (pression - PRESSION_AMBIANTE));
+    const pAdm = Math.max(PRESSION_AMBIANTE, pression - demande / Math.max(conductance, 1e-9));
+    const traverse = Math.min(demande, conductance * (pression - pAdm));
     const reserve = ((pression - PRESSION_AMBIANTE) * CAPACITE_CHAUDIERE) / dt;
     const prise = Math.min(traverse + eolipyle, vapeurCreee / dt + reserve);
-    const pAdm = clamp(pression - traverse / Math.max(conductance, 1e-9), PRESSION_AMBIANTE, pression);
     engin.vapeurEchappee = prise;
 
     // Les pressions reais de part et d'autre du piston, avec la chute au régulateur.
@@ -572,7 +595,12 @@ const modeleVapeur = (() => {
 
     // La machine porte ses paliers : frotter coute a tous les regimes.
     const frottementArbre = (engin.pieces.cylindre ? FROTTEMENT_ARBRE : FROTTEMENT_ARBRE * 0.3) * omega;
-    let net = couple + coupleChassis - coupleInjecteur - coupleEffectifSol - frottementArbre;
+    // L'injecteur est une bride sur l'arbre : le travail qu'il mange se paie en
+    // resistance, donc contre le mouvement. Soustrait tout nu, il poussait la
+    // machine à rebours sitôt la vapeur tue : régulation fermée, la voilà reculant
+    // seule à 1,6 km/h pendant des minutes, sans un grain de vapeur au cylindre
+    // (ADR 0009).
+    let net = couple + coupleChassis - coupleInjecteur * (sens || 1) - coupleEffectifSol - frottementArbre;
     // Une machine qui ne fait plus de tours est une machine calée, quitte à ce
     // qu'elle oscille encore d'un bord sur l'autre sous la vapeur comprimée.
     const VITESSE_CALE = 0.15;
@@ -645,6 +673,11 @@ const modeleVapeur = (() => {
 // Les règles du jeu : elles lisent le modèle et rendent ce que l'écran doit dire.
 // Elles ne dessinent rien, ne touchent à aucune constante physique, et ne savent
 // pas qu'il existe un navigateur.
+//
+// Un régulateur qui descend jusqu'à zéro veut dire fermé : le passage ne laisse
+// plus rien passer, la machine rend son élan, et l'écran le dit avec le mot
+// « fermé » plutôt qu'avec un pourcentage qui ment. Les règles ne tiennent donc
+// plus la vapeur ouverte par devers le joueur (ADR 0009).
 const reglesDuJeu = (() => {
   // En dessous de ce feu, le chauffeur a quitté le foyer : plus personne ne conduit.
   const FEU_BAS = 0.05;
@@ -694,8 +727,6 @@ const reglesDuJeu = (() => {
   // donc les règles notent la zone à dessiner, et une promesse vérifie qu'elle
   // est bien là où le modèle fait souffler la soupape.
   const ZONE_SOUPAPE = 11;
-  // L’élan qu’un homme met dans la roue en poussant le levier : celui du modèle.
-  const ELAN_DE_LA_BARRE = 0.4;
 
   // Les mots de la vitesse, du lent au rapide (spec : « 5 km/h — bon train »).
   // Ce qu’on garde s’appelle l’élan ; ce qu’on mesure s’appelle la vitesse.
@@ -734,18 +765,21 @@ const reglesDuJeu = (() => {
     return borne01(Number.isFinite(n) ? n / 100 : 0);
   }
 
-  // Le fond du régulateur. Fermé d'aplomb — commande à zéro strict —, le modèle ne
-  // soutire plus rien de la chaudière : la conductance tombée à zéro, la vapeur
-  // vive entre au cylindre sans que personne ne la paie, et la machine s'envole au
-  // lieu de s'arrêter. Les tringleries d'un vrai régulateur ne descendent pas si
-  // bas ; on leur laisse le même jeu. Rien ici ne touche au modèle : c'est une
-  // commande impossible que l'écran ne propose pas.
-  const REGULATEUR_FERME = 0.02;
-
   // Le régulateur dose la vapeur admise. Il ne décale pas l'excentrique : l'avance
-  // reste celle du modèle, à 0,5 (glossaire : Avance sur l'excentrique).
-  function regulateurDuCurseur(pourCent) {
-    return Math.max(REGULATEUR_FERME, commandeDuCurseur(pourCent));
+  // reste celle du modèle, à 0,5 (glossaire : Avance sur l'excentrique). Le curseur
+  // descend jusqu'à zéro et zéro est une commande qui se peut : fermée, la machine
+  // s'arrête (ADR 0009). Il n'y a donc plus de fond à 2 % à poser sous le doigt du
+  // joueur : c'est le modèle qui rend la vapeur.
+
+  // Le régulateur rendu pour l'écran : ce que la commande vaut en pour cent, et le
+  // mot qui va avec. Fermé d'aplomb, il n'y a plus rien à doser : il y a un robinet
+  // fermé, et c'est ce mot que l'écran doit montrer.
+  function pourCentDuRegulateur(commande) {
+    return Math.round(borne01(commande) * 100);
+  }
+  function motDuRegulateur(commande) {
+    const pourCent = pourCentDuRegulateur(commande);
+    return pourCent === 0 ? 'fermé' : `${pourCent} %`;
   }
 
   // --- Le temps de l'image ---
@@ -891,11 +925,10 @@ const reglesDuJeu = (() => {
     };
   }
 
-  // Le coup de barre : la machine repart du point mort, et une machine lancée
-  // garde ce qu’elle a. Le sens reste celui de la marche — `pousser` s’en charge.
-  function elanDeLaBarre(elanDejaLa) {
-    return Math.max(ELAN_DE_LA_BARRE, Math.abs(elanDejaLa));
-  }
+  // Le coup de barre n'a plus de règle : le geste est `engin.pousser()`, et le
+  // modèle ajoute la secousse au mouvement déjà là, dans le sens de la marche
+  // (ADR 0009). Les règles n'ont rien à négocier avec la vitesse de la machine
+  // avant de la toucher — elles ne feraient que cacher le mensonge.
 
   function etatDeLaMachine(engin) {
     const machine = engin.machine;
@@ -962,7 +995,13 @@ const reglesDuJeu = (() => {
       situation: s,
       // Ce que le chauffeur a demandé, tel que le modèle le garde : l'écran rend
       // la commande réelle, pas la position du curseur.
-      commandes: { feu: engin.commandes.feu, regulateur: engin.commandes.regulateur },
+      commandes: {
+        feu: engin.commandes.feu,
+        regulateur: engin.commandes.regulateur,
+        // Le mot vient de la commande réelle du modèle, pas de la position du
+        // curseur : c'est le robinet qui est fermé, pas le doigt du joueur.
+        mot: motDuRegulateur(engin.commandes.regulateur),
+      },
       mot: MOTS_DE_SITUATION[s],
       // La forme qui va avec le mot. La projection la dessine ; elle ne devine
       // jamais l'état à la couleur.
@@ -983,8 +1022,8 @@ const reglesDuJeu = (() => {
 
   const reglesDuJeu = {
     situation, etatDuJeu, MOTS_DE_SITUATION, FORMES_DE_SITUATION, FEU_BAS, ZONE_SOUPAPE,
-    PIECES_DE_BASE, ELAN_DE_LA_BARRE, elanDeLaBarre,
-    commandeDuCurseur, regulateurDuCurseur, REGULATEUR_FERME,
+    PIECES_DE_BASE,
+    commandeDuCurseur, pourCentDuRegulateur, motDuRegulateur,
     VITESSES_DU_TEMPS, pasDeLImage, passerLImage,
     nouvelleMemo, MOT_DU_RENDEMENT, RENDEMENT_EN_ATTENTE,
   };
@@ -1026,7 +1065,7 @@ const reglesDuJeu = (() => {
   const engin = M.nouvelEngin(R.PIECES_DE_BASE);
   let feuDemande = 0.8;
   engin.commandes.feu = feuDemande;
-  engin.commandes.regulateur = R.regulateurDuCurseur(100);   // la vapeur est grande ouverte
+  engin.commandes.regulateur = R.commandeDuCurseur(100);   // la vapeur est grande ouverte
 
   // La mémoire du jeu, telle que les règles l'ouvrent : vide. Aucun refroidissement
   // de Braise, aucun débloquage du garage, aucun record. Le ticket qui les écrit y
@@ -1585,9 +1624,9 @@ const reglesDuJeu = (() => {
     ecrire(vues.allure, etat.vitesse.mots);
     ecrire(vues.situation, etat.mot);
     ecrire(vues.feuDit, `${Math.round(feuDemande * 100)} %`);
-    // Le régulateur affiche la commande telle que les règles l'ont rendue : fermé à
-    // fond, le curseur dit qu'il reste du jeu, parce qu'il en reste.
-    ecrire(vues.regulateurDit, `${Math.round(engin.commandes.regulateur * 100)} %`);
+    // Le régulateur affiche la commande telle que le modèle la reçoit : fermé
+    // d'aplomb, le mot dit « fermé », parce qu'il n'y a plus de vapeur à doser.
+    ecrire(vues.regulateurDit, etat.commandes.mot);
     ecrire(vues.distanceDits, motsDeDistance(etat.comptes.distance));
     ecrire(vues.toursDits, motsDeTours(etat.comptes.tours));
     ecrire(vues.souteDite, motsDeNiveau(etat.reservoirs.soute));
@@ -1601,9 +1640,10 @@ const reglesDuJeu = (() => {
     engin.commandes.feu = feuDemande;   // la seule écriture permise : une commande
   }
   // Le régulateur dose la vapeur admise au cylindre. Il ne touche pas à l'avance de
-  // l'excentrique : le tiroir garde sa place, seule la pression change.
+  // l'excentrique : le tiroir garde sa place, seule la pression change. Le curseur
+  // peut descendre à zéro : la commande est fermée, et le modèle arrête la machine.
   function reglerLeRegulateur(pourCent) {
-    engin.commandes.regulateur = R.regulateurDuCurseur(pourCent);
+    engin.commandes.regulateur = R.commandeDuCurseur(pourCent);
   }
   // Choisir un palier de temps : la montre du joueur, pas celle du modèle.
   function choisirLaVitesseDeTemps(palier) {
@@ -1613,9 +1653,9 @@ const reglesDuJeu = (() => {
     }
   }
   function coupDeBarre() {
-    // Le geste rend l'élan que disent les règles : de quoi repartir du point mort,
-    // jamais de quoi freiner une machine lancée.
-    engin.pousser(R.elanDeLaBarre(R.etatDuJeu(engin, monde).machine.elan));
+    // Un geste, une secousse : le modèle l'ajoute au mouvement déjà là, dans le
+    // sens de la marche. De quoi repartir du point mort, jamais de quoi freiner.
+    engin.pousser();
   }
   function basculerPause() {
     enPause = !enPause;

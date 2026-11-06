@@ -1,0 +1,26 @@
+# Le régulateur est un étranglement, le coup de barre s'ajoute
+
+Le ticket 17 nomme deux mensonges que le jeu racontait sans s'en rendre compte. Serrer le régulateur rendait la machine plus rapide — fermée d'aplomb, elle avalait 2 597 m en deux minutes, et six cents secondes plus tard elle comptait quarante kilomètres pour un feu qui n'avait rien payé. Et la barre espace mettait la vitesse à 0,4 rad/s : sur une machine à son régime, le geste censé la décrocher la freinait.
+
+**Le régulateur est une résistance entre la chaudière et le cylindre, pas un compteur.** Tout ce que le cylindre demande franchit l'étranglement et le paie en pression. L'ordre du calcul est donc la moitié de l'affaire : la chute se calcule sur la DEMANDE, et le débit prélevé est ce que le passage laisse passer sous la différence ainsi obtenue. L'ordre inverse — écrêter le débit, puis diviser ce débit écrêté par la conductance — annulait la chute exactement quand le passage se fermait : conductance à zéro, chute à zéro, vapeur vive à la pression pleine de la chaudière, et un travail que personne ne paye. Le mensonge avait sa source là, et nulle part ailleurs.
+
+Deux planchers assument les limites du modèle. La pression d'admission ne descend pas sous la pression du jour : une vraie machine à régulation fermée pompe au-dessous, ce qui la retient encore davantage. Une face couverte ne fait pas le vide dehors non plus — ce qui passe les segments y rentre par le même chemin — donc le ressort de vapeur pousse, il ne tire pas. Sans lui, une machine arrêtée en pleine bande morte était aimantée à l'endroit où elle s'était posée.
+
+**Le coup de barre s'ajoute au mouvement déjà là, dans le sens de la marche.** Il ne remplace jamais la vitesse : c'est ce « jamais » qui empêchait l'espace de freiner. Mais une secousse additive est un moteur gratuit si on la martèle, alors la barre a une borne : deux bras ne poussent que ce qu'ils peuvent suivre, et au-dessus de deux radians par seconde elle échappe aux mains. Sans cette borne, trente appuis par seconde pendant dix secondes donnaient 178 m et 25 rad/s à un engin dont la soute n'avait pas bougé d'un gramme — c'est exactement la comptabilité que le jeu tient depuis ADR 0004.
+
+**Une bride ne pousse pas.** L'injecteur, soustrait de la resultante sans égard au sens, retenait la machine en marche avant et la poussait en arrière. Régulation fermée, à plat, l'engin partait en recul et labourait 48 m en cinq minutes sans un grain de vapeur au cylindre — 106 m à 1 % d'ouverture. La résistance de l'injecteur se paie désormais contre le mouvement. Le corrigé est tombé ici parce que le régulateur, une fois honnête, a laissé l'injecteur seul le plus fort : le mensonge dormait à l'ombre de l'autre.
+
+## Considered Options
+
+- **Garder un plancher au curseur** (`REGULATEUR_FERME = 0,02`) pour que le modèle n'ait jamais à répondre de zéro : le ticket demande que la course aille jusqu'au bout et que le mot affiché à zéro soit vrai. Un plancher à deux millimètres du curseur ne corrige rien, il déplace le mensonge dans une constante.
+- **Rendre l'élan de la barre aux règles** (`elanDeLaBarre`) : les règles ne peuvent pas raccommoder la physique, et le test qui vérifiait la valeur de la constante vérifiait le cache-cache, pas la machine.
+- **Grossir la secousse pour décrocher une machine parquée en pleine bande** : mesuré, il faudrait trois radians par seconde, soit quatre fois ce que vaut un homme sur sa barre — et la borne existe précisément pour refuser ce débit. La bande se franchit en berçant, une secousse par seconde, ce qui prend deux minutes. C'est long, c'est physique, et c'est une pièce à inventer (un cock de démarrage, un levier de distribution) plutôt qu'une constante à forcer.
+- **Comprimer le vide sous le régulateur fermé** : cela creuserait le piège de la bande morte pour une nuance que le joueur ne voit pas. Le plancher est dit ici plutôt que simulé.
+
+## Consequences
+
+Le curseur va jusqu'à zéro et le mot affiché à zéro est « fermé » (`motDuRegulateur`), parce qu'un pourcentage qui ment est encore un mensonge affiché. La table de marche est monotone sur toute la course : 5,27 km/h à 100 %, 5,00 à 50 %, 4,08 à 40 %, 2,87 à 30 %, puis la machine se cale au-dessous de 25 % ; fermée, elle rend son élan sur 2,6 m, la chaudière monte à la soupape et le charbon part pour rien — ce que le joueur entend sous le nom de « souffle ».
+
+Cinq promesses de plus au modèle : *serrer le régulateur ne rend jamais la machine plus rapide*, *fermée à chaud la machine rend son élan et la chaudière garde sa pression*, *rien n'avance sans vapeur*, *le coup de barre s'ajoute*, *ce qui retient la machine ne la pousse pas*. Le décor de la table des situations a bougé — la rampe du patineur est passée de régulateur 0,5 à 0,66, parce qu'à 0,5 c'était la force fantôme de l'injecteur qui tenait la machine en travers de la rampe.
+
+Reste une situation ouverte, mesurée et non résolue : une machine arrêtée en pleine bande morte, régulateur rouvert, reste prise. Elle se libère en berçant la barre — cent trente-deux secondes à raison d'une secousse par seconde dans l'expérience menée ici. Le rendu doit donc nommer ce bercement, ou le garage doit vendre un organe de démarrage ; c'est un sujet de ticket, pas une constante.

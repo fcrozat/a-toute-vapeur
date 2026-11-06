@@ -83,8 +83,8 @@ L'ouverture par laquelle la vapeur entre dans le cylindre. On dit lumière d'adm
 _Avoid_ : orifice d'introduction, port, trou
 
 **Régulateur**:
-Le robinet qui dose la quantité de vapeur admise dans la machine. C'est ce que le joueur règle pour aller plus ou moins vite.
-_Avoid_ : robinet d'admission, modérateur, gaz, accélérateur
+Le robinet qui étrangle la vapeur entre la chaudière et le cylindre. Il ne compte pas une quantité : il oppose un passage, et toute la vapeur que la machine demande doit le franchir et le payer en pression. Fermé d'aplomb, il ne passe rien — la machine rend son élan, la chaudière garde sa pression et la soupape souffle. C'est ce que le joueur règle pour aller plus ou moins vite, et le curseur va bien jusqu'à zéro.
+_Avoid_ : robinet d'admission, modérateur, gaz, accélérateur, papillon (c'est un passage étroit, pas un volet)
 
 **Détente**:
 La période où l'admission est fermée et où la vapeur enfermée continue de pousser en se dilatant. Le levier de détente règle à quel moment elle commence.
@@ -122,6 +122,10 @@ _Avoid_ : pression (qui se mesure, qui n'est pas une phase), tampon
 S'arrêter de faire de tours, pris à un point mort. Une machine calée ne repart pas seule : il faut la pousser, ou l'avoir lancée avant d'entrer dans la cote.
 _Avoid_ : bloquer, s'éteindre (une machine à vapeur ne s'éteint pas), calage
 
+**Coup de barre**:
+Secousse donnée sur la manivelle par deux bras, dans le sens de la marche. Elle s'ajoute au mouvement déjà là et ne le remplace jamais — donc elle ne freine pas une machine lancée — et elle ne pousse que ce que les mains peuvent suivre : au-dessus de deux radians par seconde, la barre échappe. À froid et sans vapeur, elle ne fait rien tourner. Son emploi premier est de décrocher une machine prise à son point mort.
+_Avoid_ : coup d'accélérateur, poussée (au clavier on donne un coup de barre ; on ne pousse pas l'engin), kickstart
+
 **Patinage**:
 Tourner des roues sans que le sol donne plus : l'acier glisse sur l'acier, la vapeur part en tours de roues vides et la machine n'avance guère. Le patinage se paie en charbon.
 _Avoid_ : glissement (le glissement désigne la perte de prise, le patinage est l'état de l'engin), dérapage
@@ -153,6 +157,10 @@ _Avoid_ : tête de croix, crosshead, pied de bielle
 **Boîte à fumée**:
 La caisse fermée à l'avant de la chaudière, où la vapeur usée arrive avant de monter par la cheminée.
 _Avoid_ : coffre à fumée, cheminée (la cheminée en fait partie, ce n'est pas la même pièce)
+
+**Injecteur**:
+Ce qui pousse l'eau dans la chaudière sous pression. Il mange une part du travail de la machine, et cette part se paie en résistance sur l'arbre : une bride qui retient, jamais un moteur qui pousse.
+_Avoid_ : pompe (la pompe du décor est une pièce du monde), nourriture (le verbe du jeu est « injecter »)
 
 **Tuyère d'échappement**:
 Le tube par lequel la vapeur usée est chassée dans la boîte à fumée ; ce jet crée l'appel d'air qui active le feu.
