@@ -65,6 +65,7 @@
     </section>
     <section id="comptes" aria-label="Comptes de la machine">
       <p class="compte"><span class="etiquette">Distance</span><span id="distance-dits">0 m</span></p>
+      <p class="compte"><span class="etiquette">Rampe annoncée</span><span id="rampe-dite">—</span></p>
       <p class="compte"><span class="etiquette">Tours faits</span><span id="tours-dits">0 tour</span></p>
       <p class="compte"><span class="etiquette">Soute</span><span id="soute-dite">100 % — pleine</span></p>
       <p class="compte"><span class="etiquette">Citerne</span><span id="citerne-dite">100 % — pleine</span></p>
@@ -1216,7 +1217,7 @@ const reglesDuJeu = (() => {
     commandeDuCurseur, pourCentDuRegulateur, motDuRegulateur,
     VITESSES_DU_TEMPS, pasDeLImage, passerLImage,
     nouvelleMemo, MOT_DU_RENDEMENT, RENDEMENT_EN_ATTENTE,
-    GRAINE_DU_JEU, SEUIL_DE_RAMPE, ligneDeLaGraine, mondeDeLaLigne, mondeDeLaGraine,
+    GRAINE_DU_JEU, SEUIL_DE_RAMPE, nombreDeLaGraine, ligneDeLaGraine, mondeDeLaLigne, mondeDeLaGraine,
     mondeSousLesRoues, prochaineRampe,
   };
   return reglesDuJeu;
@@ -1246,14 +1247,19 @@ const reglesDuJeu = (() => {
     barre: document.getElementById('barre'),
     paliers: Array.from(document.querySelectorAll('#vitesse-temps .palier')),
     distanceDits: document.getElementById('distance-dits'),
+    rampeDite: document.getElementById('rampe-dite'),
     toursDits: document.getElementById('tours-dits'),
     souteDite: document.getElementById('soute-dite'),
     citerneDite: document.getElementById('citerne-dite'),
     rendementDit: document.getElementById('rendement-dit'),
   };
 
-  // --- Le départ : la machine des treize pièces, chauffée, sur le plat ---
-  const monde = M.nouveauMonde({ pente: 0, bosses: [] });
+  // --- Le départ : la machine des treize pièces, chauffée, au bord de la ligne ---
+  // La ligne vient d'une graine, pas d'un hasard : la même graine rend toujours le
+  // même chemin, et l'adresse peut la choisir (?graine=1882). Le relief dessiné,
+  // la pente sous les roues et la rampe annoncée sortent tous de là.
+  const graine = R.nombreDeLaGraine(new URLSearchParams(window.location.search).get('graine'));
+  const monde = R.mondeDeLaGraine(graine);
   const engin = M.nouvelEngin(R.PIECES_DE_BASE);
   let feuDemande = 0.8;
   engin.commandes.feu = feuDemande;
@@ -1266,7 +1272,7 @@ const reglesDuJeu = (() => {
 
   // On ouvre le rideau sur une chaudière chaude : sans ça, il faudrait une
   // minute de feu avant que l'écran montre quoi que ce soit.
-  M.simuler(engin, monde, { duree: 40 });
+  R.passerLImage(engin, monde, { duree: 40 });
   engin.pousser();
 
   // --- L'horloge ---
@@ -1436,6 +1442,112 @@ const reglesDuJeu = (() => {
       crayon.moveTo(px, ty - 2);
       crayon.lineTo(px, ty + 7);
       crayon.stroke();
+    }
+  }
+
+  // --- Le décor de la ligne : l'eau, le charbon, le vent, la rampe annoncée ---
+  // Rien ici ne décide du terrain : la projection reporte à l'écran la place et la
+  // pente que les règles lui donnent, au même endroit que le profil qu'elle vient
+  // de tracer.
+  function leSolEn(sol, x) {
+    return {
+      x: ancreX() + (x - sol.distance) * ECHELLE,
+      y: solY() - denivelle(sol, sol.distance, x) * ECHELLE,
+    };
+  }
+
+  function dessineLeDecor(etat) {
+    const sol = etat.sol;
+
+    // La rivière : la nappe au fond du creux, et rien d'autre. Elle n'est là que
+    // là où le monde la dit.
+    if (sol.riviere) {
+      const gauche = leSolEn(sol, sol.riviere.a);
+      const droite = leSolEn(sol, sol.riviere.a + sol.riviere.longueur);
+      crayon.fillStyle = '#245068';
+      crayon.fillRect(gauche.x, gauche.y, droite.x - gauche.x, 16);
+      crayon.strokeStyle = '#8fb9cf';
+      crayon.lineWidth = 2;
+      for (let i = 0; i < 3; i += 1) {
+        const y = gauche.y + 4 + i * 4;
+        const glisse = ((sol.distance * 14 + i * 23) % 30) - 15;
+        crayon.beginPath();
+        crayon.moveTo(gauche.x + 18 + glisse, y);
+        crayon.lineTo(gauche.x + 40 + glisse, y);
+        crayon.stroke();
+      }
+    }
+
+    // Le charbonnage : un terril noir et sa estacade, après l'eau.
+    if (sol.charbonnage) {
+      const pied = leSolEn(sol, sol.charbonnage.a + sol.charbonnage.longueur / 2);
+      crayon.fillStyle = '#15171b';
+      crayon.beginPath();
+      crayon.moveTo(pied.x - 44, pied.y);
+      crayon.lineTo(pied.x - 14, pied.y - 32);
+      crayon.lineTo(pied.x + 20, pied.y);
+      crayon.closePath();
+      crayon.fill();
+      crayon.strokeStyle = '#5b4a33';
+      crayon.lineWidth = 4;
+      crayon.beginPath();
+      crayon.moveTo(pied.x - 52, pied.y - 3);
+      crayon.lineTo(pied.x + 30, pied.y - 3);
+      crayon.stroke();
+    }
+
+    // La vallée ventée : des raies qui courent à rebours du chemin. Le vent ne
+    // pousse la machine que si elle porte une voile ; ici il se montre.
+    if (sol.vent) {
+      const gauche = leSolEn(sol, sol.vent.a);
+      const droite = leSolEn(sol, sol.vent.a + sol.vent.longueur);
+      const force = Math.max(0.3, Math.min(1, Math.abs(sol.vent.force || 0.6)));
+      crayon.strokeStyle = 'rgba(223, 231, 238, 0.75)';
+      crayon.lineWidth = 2;
+      const raies = 3;
+      for (let i = 0; i < raies; i += 1) {
+        const y = gauche.y - 26 - i * 13;
+        const x1 = droite.x - 10 - i * 8;
+        const x0 = Math.max(gauche.x + 8 + i * 8, x1 - 34 - 30 * force);
+        if (x1 - x0 < 12) continue;
+        crayon.beginPath();
+        crayon.moveTo(x0, y);
+        crayon.lineTo(x1, y);
+        crayon.moveTo(x0, y);
+        crayon.lineTo(x0 + 9, y - 5);
+        crayon.moveTo(x0, y);
+        crayon.lineTo(x0 + 9, y + 5);
+        crayon.stroke();
+      }
+    }
+
+    // Le panneau de la rampe : planté à son pied, il porte sa pente, en nombre et
+    // en forme. On la lit avant d'y être, et jusque sous la rampe.
+    const annonce = sol.prochaine;
+    if (annonce) {
+      const pied = leSolEn(sol, annonce.a);
+      crayon.strokeStyle = '#8c7a55';
+      crayon.lineWidth = 3;
+      crayon.beginPath();
+      crayon.moveTo(pied.x, pied.y - 4);
+      crayon.lineTo(pied.x, pied.y - 46);
+      crayon.stroke();
+      crayon.fillStyle = '#1a1d22';
+      crayon.fillRect(pied.x - 4, pied.y - 68, 54, 24);
+      crayon.strokeStyle = CHARS.ferClair;
+      crayon.lineWidth = 2;
+      crayon.strokeRect(pied.x - 4, pied.y - 68, 54, 24);
+      // la pente elle-même, dessinée : le tracé monte de pente × longueur
+      crayon.beginPath();
+      crayon.moveTo(pied.x + 3, pied.y - 48);
+      crayon.lineTo(pied.x + 27, pied.y - 48 - 24 * annonce.pente * 2.5);
+      crayon.strokeStyle = annonce.sens === 'dedans' ? CHARS.braise : CHARS.vapeur;
+      crayon.lineWidth = 3;
+      crayon.stroke();
+      crayon.fillStyle = CHARS.vapeur;
+      crayon.font = 'bold 15px system-ui, sans-serif';
+      crayon.textAlign = 'left';
+      crayon.fillText(`${Math.round(annonce.pente * 100)} %`, pied.x + 30, pied.y - 51);
     }
   }
 
@@ -1796,6 +1908,15 @@ const reglesDuJeu = (() => {
       ? `${(metres / 1000).toFixed(2).replace('.', ',')} km`
       : `${Math.round(metres)} m`;
   }
+  // La rampe d'en face, en mots : sa pente, et ce qui reste avant d'y entrer.
+  function motsDeLaRampe(annonce) {
+    if (!annonce) return '—';
+    const pente = `${Math.round(annonce.pente * 100)} %`;
+    return annonce.sens === 'dedans'
+      ? `${pente} — dedans`
+      : `${pente} — dans ${motsDeDistance(annonce.dans)}`;
+  }
+
   function motsDeTours(tours) {
     const n = Math.floor(tours);
     return `${n.toLocaleString('fr-FR')} tour${n > 1 ? 's' : ''}`;
@@ -1820,6 +1941,7 @@ const reglesDuJeu = (() => {
     // d'aplomb, le mot dit « fermé », parce qu'il n'y a plus de vapeur à doser.
     ecrire(vues.regulateurDit, etat.commandes.mot);
     ecrire(vues.distanceDits, motsDeDistance(etat.comptes.distance));
+    ecrire(vues.rampeDite, motsDeLaRampe(etat.sol.prochaine));
     ecrire(vues.toursDits, motsDeTours(etat.comptes.tours));
     ecrire(vues.souteDite, motsDeNiveau(etat.reservoirs.soute));
     ecrire(vues.citerneDite, motsDeNiveau(etat.reservoirs.citerne));
@@ -1887,6 +2009,7 @@ const reglesDuJeu = (() => {
     const etat = R.etatDuJeu(engin, monde);
     crayon.clearRect(0, 0, large, haut);
     dessineLeSol(etat);
+    dessineLeDecor(etat);
     dessineLengin(etat);
     avaleLaFumee(etat, enPause ? 0 : ecoule);
     dessineLaJauge(etat);
