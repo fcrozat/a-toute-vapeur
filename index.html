@@ -912,6 +912,159 @@ const reglesDuJeu = (() => {
     return pente;
   }
 
+  // --- Le trajet ------------------------------------------------------------
+  //
+  // Une ligne, pas un terrain infini (spec, décision 12) : une table de segments
+  // tirée d'une graine. La graine est un nombre — celui du fichier, ou celui que
+  // le joueur écrit dans l'URL — jamais un service. Deux montages sur la même
+  // graine gravissent la même bosse, et la même graine rend la même ligne image
+  // après image : ce n'est pas le hasard qui décide, c'est la suite.
+  const GRAINE_DU_JEU = 1882;
+
+  // En dessous de cette pente, ce n'est pas une rampe, c'est la route : il n'y a
+  // rien à annoncer. C'est un choix d'écran — le modèle, lui, ne voit jamais ce
+  // chiffre, il additionne les rampes comme avant.
+  const SEUIL_DE_RAMPE = 0.08;
+
+  // Une graine qui n'est pas un nombre entier positif n'est pas une graine : on
+  // retombe sur celle du fichier, et la ligne le dit elle-même.
+  function nombreDeLaGraine(graine) {
+    const nombre = typeof graine === 'number' ? graine : Number(graine);
+    return Number.isInteger(nombre) && nombre > 0 ? nombre : GRAINE_DU_JEU;
+  }
+
+  // Un tirage sans hasard : xorshift 32 bits. Même graine, même suite de nombres,
+  // dans le même ordre, sur ce montage-ci comme sur n'importe quel autre.
+  function tireurDeLaGraine(graine) {
+    let etat = graine >>> 0;
+    if (etat === 0) etat = 0x9e3779b9;
+    const suivant = () => {
+      etat ^= etat << 13;
+      etat ^= etat >>> 17;
+      etat ^= etat << 5;
+      etat >>>= 0;
+      return etat / 4294967296;
+    };
+    for (let i = 0; i < 8; i += 1) suivant(); // on éloigne les graines voisines
+    return suivant;
+  }
+
+  // La ligne : à plat d'abord — l'élan se prend là —, une bosse qui refuse au pas
+  // et se laisse gravir lancée, une rampe raide où les roues tournent dans le
+  // vide, la rivière au fond d'un creux, le charbonnage, puis la vallée ventée.
+  //
+  // Les longueurs ne sont pas tombées du ciel : elles tiennent dans ce que la
+  // machine emporte. Avec ses pleins du catalogue et le feu à fond, elle fait
+  // deux cents mètres avant que l'eau ne manque — la ligne s'arrête avant.
+  function ligneDeLaGraine(graine) {
+    const g = nombreDeLaGraine(graine);
+    const tire = tireurDeLaGraine(g);
+    const entier = (min, max) => min + Math.round(tire() * (max - min));
+    const pente = (min, max) => Math.round((min + tire() * (max - min)) * 100) / 100;
+
+    const plat = entier(24, 30);              // le seul endroit où l'on prend de l'élan
+    const palier = entier(16, 20);
+    const penteDouce = pente(0.12, 0.16);     // passée lancée, refusée au pas
+    const berge = 5;                          // de quoi descendre à l'eau et en remonter
+    const gue = entier(12, 15);
+    const longueurDuCharbonnage = 8;
+    const longueurDuVent = entier(12, 16);
+    const forceDuVent = pente(0.45, 0.9);
+    const penteRaide = pente(0.26, 0.32);     // là où les roues tournent dans le vide
+    const longueurDeLaRampe = entier(22, 26);
+
+    const aBosse = plat;
+    const aRiviere = aBosse + 2 * palier + 4;
+    const aCharbon = aRiviere + 2 * berge + gue + 5;
+    const aVent = aCharbon + longueurDuCharbonnage + 5;
+    // La rampe qui la refuse ferme la ligne : après elle, il n'y a plus de chemin.
+    const aRampe = aVent + longueurDuVent + 5;
+
+    return {
+      graine: g,
+      pente: 0,
+      bosses: [
+        { a: aBosse, longueur: palier, pente: penteDouce },
+        { a: aBosse + palier, longueur: palier, pente: -penteDouce },
+        { a: aRiviere, longueur: berge, pente: -0.05 },
+        { a: aRiviere + berge + gue, longueur: berge, pente: 0.05 },
+        { a: aRampe, longueur: longueurDeLaRampe, pente: penteRaide },
+      ],
+      riviere: { a: aRiviere + berge, longueur: gue },
+      charbonnage: { a: aCharbon, longueur: longueurDuCharbonnage },
+      vent: { a: aVent, longueur: longueurDuVent, force: forceDuVent },
+      longueur: aRampe + longueurDeLaRampe,
+    };
+  }
+
+  // Le monde tel que la ligne le donne : les six champs que la physique lit, rien
+  // d'autre (spec, décision 12). Ici la rivière et le vent sont des *endroits*.
+  function mondeDeLaLigne(ligne) {
+    return modeleVapeur.nouveauMonde({
+      pente: ligne.pente,
+      bosses: ligne.bosses.map((bosse) => ({ ...bosse })),
+      riviere: { ...ligne.riviere },
+      charbonnage: { ...ligne.charbonnage },
+      vent: { ...ligne.vent },
+      circuit: null,
+    });
+  }
+
+  function mondeDeLaGraine(graine) {
+    return mondeDeLaLigne(ligneDeLaGraine(graine));
+  }
+
+  // Une région, ou rien. Le monde rend l'endroit ; il rend aussi `false` ou `0`
+  // quand il n'y a ni rivière ni vent — le dessin n'a qu'à ne rien poser.
+  function regionDe(valeur) {
+    return valeur && typeof valeur === 'object' ? valeur : null;
+  }
+
+  function onEstDedans(region, distance) {
+    return region !== null && distance >= region.a && distance <= region.a + region.longueur;
+  }
+
+  // Le monde sous les roues : ce que la physique sent *à la distance où elle en
+  // est*. `monde.riviere` doit être vrai à la rivière et faux ailleurs, `monde.vent`
+  // un nombre dans la vallée et zéro sur le plat — sinon la pompe remplirait la
+  // citerne à cent mètres de l'eau et la voile se gonflerait en rase campagne.
+  // Les types sont ceux que le modèle lit : booléen, booléen, nombre.
+  function mondeSousLesRoues(engin, monde) {
+    const distance = engin.distance;
+    const riviere = regionDe(monde.riviere);
+    const charbonnage = regionDe(monde.charbonnage);
+    const vent = regionDe(monde.vent);
+    return modeleVapeur.nouveauMonde({
+      pente: monde.pente,
+      bosses: (monde.bosses || []).map((bosse) => ({ ...bosse })),
+      riviere: riviere ? onEstDedans(riviere, distance) : Boolean(monde.riviere),
+      charbonnage: charbonnage ? onEstDedans(charbonnage, distance) : Boolean(monde.charbonnage),
+      vent: vent ? (onEstDedans(vent, distance) ? vent.force : 0) : (monde.vent || 0),
+      circuit: monde.circuit,
+    });
+  }
+
+  // La rampe d'en face : celle que le chauffeur doit avoir en tête avant d'y
+  // être. La plus proche devant lui, avec sa pente et ce qui reste à parcourir
+  // avant d'y entrer. Une fois dedans, c'est la suivante qui prend la place ;
+  // après la dernière, il n'y a plus rien à annoncer.
+  function prochaineRampe(engin, monde) {
+    const distance = engin.distance;
+    const montantes = (monde.bosses || [])
+      .filter((bosse) => bosse.pente >= SEUIL_DE_RAMPE && bosse.a + bosse.longueur > distance)
+      .sort((une, autre) => une.a - autre.a);
+    if (montantes.length === 0) return null;
+    const bosse = montantes[0];
+    return {
+      a: bosse.a,
+      longueur: bosse.longueur,
+      pente: bosse.pente,
+      dans: Math.max(0, bosse.a - distance),
+      // Dedans ou devant : le mot change, la pente est la même.
+      sens: distance >= bosse.a ? 'dedans' : 'devant',
+    };
+  }
+
   function solVu(engin, monde) {
     return {
       distance: engin.distance,
@@ -922,7 +1075,44 @@ const reglesDuJeu = (() => {
       // modèle, revue à une promesse près : « la pente annoncée est celle des roues ».
       penteEn: (x) => penteAuPoint(x, monde),
       bosses: (monde.bosses || []).map((bosse) => ({ ...bosse })),
+      // Le reste du décor, à sa place sur la ligne : l'eau, le charbon, le vent.
+      // C'est du dessin, mais c'est le monde qui le dit — la projection ne pose
+      // pas une rivière où il lui chante.
+      riviere: riviereVue(monde.riviere),
+      charbonnage: regionVue(monde.charbonnage),
+      vent: ventVu(monde.vent),
+      longueur: longueurDuMonde(monde),
+      // Ce que le chauffeur a devant lui : la rampe, sa pente, ce qui reste.
+      prochaine: prochaineRampe(engin, monde),
     };
+  }
+
+  function regionVue(region) {
+    const r = regionDe(region);
+    return r === null ? null : { a: r.a, longueur: r.longueur };
+  }
+
+  function riviereVue(riviere) {
+    return regionVue(riviere);
+  }
+
+  function ventVu(vent) {
+    const v = regionDe(vent);
+    return v === null ? null : { a: v.a, longueur: v.longueur, force: v.force || 0 };
+  }
+
+  // Où s'arrête la ligne : au dernier endroit qu'elle déclare — la dernière
+  // rampe, le bord de l'eau, la fin du charbon, le bout de la vallée. Le monde
+  // n'a pas besoin d'un champ de plus pour le dire. Une plaine de test, elle,
+  // ne déclare rien : pas de fin, et l'écran n'a rien à annoncer.
+  function longueurDuMonde(monde) {
+    let bout = null;
+    const etendre = (fin) => { if (bout === null || fin > bout) bout = fin; };
+    for (const bosse of monde.bosses || []) etendre(bosse.a + bosse.longueur);
+    for (const region of [monde.riviere, monde.charbonnage, monde.vent]) {
+      if (regionDe(region) !== null) etendre(region.a + region.longueur);
+    }
+    return bout;
   }
 
   // Le coup de barre n'a plus de règle : le geste est `engin.pousser()`, et le
@@ -1026,6 +1216,8 @@ const reglesDuJeu = (() => {
     commandeDuCurseur, pourCentDuRegulateur, motDuRegulateur,
     VITESSES_DU_TEMPS, pasDeLImage, passerLImage,
     nouvelleMemo, MOT_DU_RENDEMENT, RENDEMENT_EN_ATTENTE,
+    GRAINE_DU_JEU, SEUIL_DE_RAMPE, ligneDeLaGraine, mondeDeLaLigne, mondeDeLaGraine,
+    mondeSousLesRoues, prochaineRampe,
   };
   return reglesDuJeu;
 })();
