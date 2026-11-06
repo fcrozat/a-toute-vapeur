@@ -69,8 +69,12 @@ Monter une pièce sur l'engin. Elle entre dans la masse embarquée et change ce 
 _Avoid_ : acheter, installer, ajouter (brancher se démonte), débloquer (une pièce débloquée est seulement devenue visible)
 
 **Démonter**:
-Ôter un exemplaire d'une pièce de l'engin. La masse embarquée diminue d'autant et le comportement change sous les yeux ; rien ne se revend, rien ne se rembourse.
-_Avoid_ : supprimer, vendre, enlever, détruire (la pièce reste ouverte au garage)
+Ôter un exemplaire d'une pièce de l'engin. La masse embarquée diminue d'autant et le comportement change sous les yeux ; rien ne se revend, rien ne se rembourse, et le charbon comme l'eau restent où ils sont — c'est la pièce qui les donnait à prendre. Une pièce que le modèle ne sent pas ne se démonte pas : elle est dite structurelle.
+_Avoid_ : supprimer, vendre, enlever, détruire (la pièce reste ouverte au garage), décrasser, décharger (démonter ne vide rien)
+
+**Structurelle**:
+Se dit d'une pièce que le modèle ne sent que par sa masse, et dont la masse n'est pas le rôle : elle se lit au garage, son chiffre et son nom y sont, mais le geste de la retirer n'est pas proposé. Le mot est écrit sur sa ligne pour que la table ne paraisse pas muette sur ce qu'elle refuse (ADR 0010).
+_Avoid_ : verrouillée (une pièce verrouillée ne se montre pas), inutile, décorative (elle pèse), cachée
 
 **Masse embarquée**:
 Ce que pèse l'engin, châssis et pièces montées dessus compris : la monnaie du garage, et ce que l'élève voit bouger quand il branche. En tonnes, avec deux décimales : cinq des treize pièces du départ coûtent moins d'un dixième, et la monnaie doit se voir.
@@ -143,8 +147,8 @@ Secousse donnée sur la manivelle par deux bras, dans le sens de la marche. Elle
 _Avoid_ : coup d'accélérateur, poussée (au clavier on donne un coup de barre ; on ne pousse pas l'engin), kickstart
 
 **Patinage**:
-Tourner des roues sans que le sol donne plus : l'acier glisse sur l'acier, la vapeur part en tours de roues vides et la machine n'avance guère. Le patinage se paie en charbon.
-_Avoid_ : glissement (le glissement désigne la perte de prise, le patinage est l'état de l'engin), dérapage
+Tourner des roues sans que le sol donne plus : l'acier glisse sur l'acier, la vapeur part en tours de roues vides et la machine n'avance guère. Le patinage se paie en charbon. Le mot se dit aussi de l'arbre qui tourne sans rien entraîner — plus de roues du tout, la transmission dans le vide : l'organe tourne, rien ne le prend.
+_Avoid_ : glissement (le glissement désigne la perte de prise, le patinage est l'état de l'engin), dérapage, roue libre (la roue libre est un organe que le jeu n'a pas)
 
 **Souffler**:
 Se dit de la soupape qui laisse partir la vapeur qu'on ne soutire pas. Un foyer qui souffle a brûlé du charbon pour rien, et le joueur l'entend.
