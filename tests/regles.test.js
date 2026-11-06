@@ -1499,3 +1499,265 @@ test('le régulateur ôté ne rend plus le pourcentage d\'une commande muette', 
   assert.equal(R.brancherPiece(engin, memo, 'regulateur'), true, 'le régulateur ôté ne se remonte pas');
   assert.equal(R.etatDuJeu(engin, monde).commandes.mot, '37 %', 'régulateur remonté, la commande ne reprend pas la parole');
 });
+
+// --- Ticket 9 · le charbon et l’eau se reprennent en route ------------------
+//
+// Le champ `charbonnage` de la ligne était déclaré, peint à l’écran, et jamais lu
+// pour quoi que ce soit de comptable. Le soutage lui donne son emploi, et la
+// promesse tenue au joueur tient en une phrase : une panne de charbon a une
+// réponse. On roule jusqu’au terril, on s’arrête, on soutire — la panne se paie
+// en temps et en panache éteint, pas en partie perdue.
+//
+// Ce qui est écrit ici avant le code :
+//  · on soutire à l’arrêt, dans la zone, quelle que soit la raison de l’arrêt ;
+//  · la reprise n’est pas du charbon brûlé ;
+//  · une soute qui n’est pas montée ne se remplit pas (billet #18 : la quantité
+//    survit à la pièce, personne n’y atteint plus) ;
+//  · l’eau de la rivière attend son arbre de pompe : rien ne la livre aujourd’hui.
+
+// Un charbonnage posé de 40 m à 48 m, à plat autour : le décor du soutage.
+const charbonniere = ({ a = 40, longueur = 8 } = {}) => M.nouveauMonde({ charbonnage: { a, longueur } });
+
+// Un engin arrêté par sa propre faim, posé à la distance voulue. Le feu est
+// ouvert : c’est le charbon qui manque à la grille, pas la main sur le foyer.
+function enginALaFaim({ distance = 44, soute = 0, pieces = R.PIECES_DE_BASE } = {}) {
+  const monde = charbonniere();
+  const engin = M.nouvelEngin(pieces);
+  engin.soute = soute;
+  engin.commandes.feu = 1;
+  engin.commandes.regulateur = 1;
+  engin.distance = distance;
+  rouler(engin, monde, { duree: 20 });
+  assert.equal(engin.mouvement(), false, `l’engin posé à ${distance} m n’est pas à l’arrêt`);
+  return { engin, monde };
+}
+
+// Le geste du billet, amené par les seules commandes du jeu : la machine roule,
+// le chauffeur coupe la vapeur en vue du terril, l’élan se rend, la machine cale
+// — et l’on soutire sur place. C’est la réponse à la question que le billet ne
+// peut pas éviter : sans frein, comment s’arrête-t-on devant le charbonnage ?
+function arrateeDevantLeCharbonnage(graine = R.GRAINE_DU_JEU) {
+  const monde = R.mondeDeLaGraine(graine);
+  const zone = monde.charbonnage;
+  const engin = M.nouvelEngin(R.PIECES_DE_BASE);
+  engin.commandes.feu = 1;
+  engin.commandes.regulateur = 1;
+  let t = 0;
+  const pas = () => { M.pasDeTemps(engin, monde, PAS); t += PAS; };
+  while (t < 50) pas();
+  engin.pousser(0.4);
+  while (engin.distance < zone.a - 1.5 && t < 400) pas();
+  engin.commandes.regulateur = 0;          // le seul frein que le jeu connaisse
+  while (engin.mouvement() && t < 400) pas();
+  return { engin, monde, zone, t };
+}
+
+test('à l’arrêt devant un charbonnage la soute se remplit, et le débit se paie en temps', () => {
+  const { engin, monde } = enginALaFaim({ distance: 44 });
+  const avant = engin.soute;
+
+  const premierRepris = R.soutage(engin, monde, 1 / 20);   // une image d’écran
+  assert.ok(premierRepris > 0, 'rien n’est repris à l’arrêt sur le charbonnage');
+  assert.equal(engin.soute, avant + premierRepris, 'le soutage ne rend pas ce qu’il met dans la soute');
+  // Le débit est une règle du jeu : une image ne remet pas trois cents kilos.
+  assert.ok(premierRepris < 75, `une image reprend ${premierRepris.toFixed(0)} kg : le plein est instantané`);
+
+  // La panne se paie en temps. Une soute vide se remplit en minutes de machine,
+  // pas en clignant des yeux — et pas en quittant l’écran non plus.
+  let secondes = 0;
+  while (engin.soute < engin.capacite('soute') && secondes < 900) {
+    R.soutage(engin, monde, 1 / 20);
+    secondes += 1 / 20;
+  }
+  assert.equal(engin.soute, engin.capacite('soute'), `le plein s’arrête à ${engin.soute.toFixed(0)} kg`);
+  assert.ok(secondes >= 30, `une soute vide reprise en ${secondes.toFixed(0)} s : la panne ne coûte rien`);
+  assert.ok(secondes <= 150, `il faut ${secondes.toFixed(0)} s pour un plein : le joueur quitte l’écran`);
+});
+
+test('ailleurs, et en marche, le soutage ne remplit rien', () => {
+  // Hors de la zone, même arrêté : le charbon d’à côté ne coule pas tout seul.
+  for (const distance of [0, 12, 39.5, 48.5, 90, 250]) {
+    const { engin, monde } = enginALaFaim({ distance });
+    const repris = R.soutage(engin, monde, 20);
+    assert.equal(repris, 0, `on reprend ${repris.toFixed(1)} kg à ${distance} m du départ`);
+    assert.equal(engin.soute, 0, `la soute s’est remplie à ${distance} m du charbonnage`);
+  }
+
+  // Dans la zone mais en marche : les roues tournent, personne ne descend à la pelle.
+  const rouleuse = machineVapeur();
+  const monde = charbonniere();
+  demarrer(rouleuse, monde, { suite: 10 });
+  rouleuse.distance = 44;
+  assert.equal(rouleuse.mouvement(), true, 'la machine censée rouler est arrêtée');
+  const avant = rouleuse.soute;
+  assert.equal(R.soutage(rouleuse, monde, 20), 0, 'le soutage remplit la soute en marche');
+  assert.equal(rouleuse.soute, avant, 'la soute a grossi pendant que la machine roulait');
+});
+
+test('coupée de sa vapeur en vue du charbonnage, la machine cale dans la zone et s’y ravitaille', () => {
+  const { engin, monde, zone } = arrateeDevantLeCharbonnage();
+
+  // Le joueur n’a pas de frein : couper le régulateur laisse la machine rendre
+  // son élan. Ce que le jeu accepte est écrit ici — un calage compte comme un
+  // arrêt, quelle que soit la raison qui a mis la machine là.
+  assert.equal(engin.mouvement(), false, 'la machine roule encore après la vapeur coupée');
+  assert.ok(
+    engin.distance >= zone.a && engin.distance <= zone.a + zone.longueur,
+    `l’arrêt se fait à ${engin.distance.toFixed(1)} m, hors du charbonnage (${zone.a}–${zone.a + zone.longueur} m)`,
+  );
+  assert.equal(R.situation(engin, monde), 'cale', 'le seul arrêt accepté est un autre mot que « Calée »');
+
+  // Le soutage, sur un calage : la soute remonte, et elle y met du temps.
+  const avant = engin.soute;
+  assert.ok(R.soutage(engin, monde, 1) > 0, 'rien n’est repris sur un calage du charbonnage');
+  assert.ok(engin.soute < engin.capacite('soute'), 'la soute était déjà pleine avant l’arrêt : rien à reprendre');
+  let secondes = 0;
+  while (engin.soute < engin.capacite('soute') && secondes < 300) {
+    R.soutage(engin, monde, 1 / 20);
+    secondes += 1 / 20;
+  }
+  assert.ok(engin.soute > avant + 20, 'la soute n’a pas profité de l’arrêt');
+
+  // Et la machine repart, avec le seul geste que l'écran connaisse : rouvrir le
+  // régulateur et jouer de la barre. Un coup ne suffit pas — la machine est posée
+  // sur son point mort, et c'est la physique du billet #2, pas un trou du soutage.
+  // La panne se paie là aussi : du temps et des coups de barre, pas la partie.
+  engin.commandes.regulateur = 1;
+  for (let coup = 0; coup < 3; coup += 1) {
+    engin.pousser();
+    rouler(engin, monde, { duree: 1 });
+  }
+  const distanceDeLArret = engin.distance;
+  rouler(engin, monde, { duree: 30 });
+  assert.ok(
+    engin.distance > distanceDeLArret + 5,
+    `repartie du charbonnage, la machine n'a fait que ${(engin.distance - distanceDeLArret).toFixed(1)} m`,
+  );
+  assert.ok(engin.soute < engin.capacite('soute'), 'repartie avec son charbon, la machine n’en a rien brûlé');
+});
+
+test('la reprise au charbonnage n’est pas du charbon brûlé', () => {
+  const { engin, monde } = enginALaFaim({ distance: 44 });
+  engin.commandes.feu = 0;   // feu clos pendant le soutage : rien ne brûle, tout entre
+
+  const facture = engin.charbonBrule;
+  const factureDite = R.etatDuJeu(engin, monde, R.nouvelleMemo()).comptes.charbonBrule;
+  const repris = R.soutage(engin, monde, 20);
+  assert.ok(repris > 10, `le soutage ne reprend que ${repris.toFixed(1)} kg : rien à comparer`);
+
+  assert.equal(engin.charbonBrule, facture, 'la reprise au charbonnage est comptée comme brûlée');
+  assert.equal(engin.soute, repris, 'la reprise n’entre pas toute entière dans la soute');
+  assert.equal(
+    R.etatDuJeu(engin, monde, R.nouvelleMemo()).comptes.charbonBrule,
+    factureDite,
+    'l’écran rend une facture grossie par le charbon repris',
+  );
+
+  // Ce que la caisse a pris, la grille ne l’a pas mangé : rouvrir le feu fait
+  // reprendre la facture où elle s’était arrêtée, sans rattraper la reprise.
+  const avantReprise = engin.soute;
+  engin.commandes.feu = 1;
+  rouler(engin, monde, { duree: 5 });
+  const bruleApres = engin.charbonBrule - facture;
+  assert.ok(bruleApres > 0, 'le feu ouvert ne brûle plus rien');
+  assert.ok(bruleApres < avantReprise, `cinq secondes de feu ont brûlé ${bruleApres.toFixed(1)} kg sur ${avantReprise.toFixed(1)} repris`);
+  assert.ok(engin.soute < avantReprise, 'la grille ne mange pas la reprise, ça se voit mal');
+});
+
+test('le soutage s’arrête à la capacité des soutes montées', () => {
+  const une = enginALaFaim({ distance: 44 });
+  R.soutage(une.engin, une.monde, 600);
+  assert.equal(une.engin.soute, 300, `une soute contient ${une.engin.soute.toFixed(0)} kg`);
+  assert.equal(R.etatDuJeu(une.engin, une.monde).reservoirs.soute.plein, 1, 'pleine, la soute ne se dit pas pleine');
+
+  // Deux soutes, deux fois la caisse : la capacité vient du catalogue, pas d’un
+  // plafond inventé pour que la rampe du bout passe.
+  const deux = enginALaFaim({ distance: 44, pieces: [...R.PIECES_DE_BASE, 'soute'] });
+  R.soutage(deux.engin, deux.monde, 600);
+  assert.equal(deux.engin.capacite('soute'), 600, 'deux soutes ne contiennent pas deux fois plus');
+  assert.equal(deux.engin.soute, 600, `deux soutes contiennent ${deux.engin.soute.toFixed(0)} kg`);
+});
+
+test('une soute qui n’est pas montée ne se remplit pas, et l’écran le dit', () => {
+  const pieces = R.PIECES_DE_BASE.filter((id) => id !== 'soute');
+  const { engin, monde } = enginALaFaim({ distance: 44, pieces, soute: 120 });
+
+  // Billet #18 : la quantité survit à la pièce, et personne n’y atteint plus.
+  assert.equal(engin.soute, 120, 'démonter la soute a versé son charbon');
+  assert.equal(engin.capacite('soute'), 0, 'une soute absente a encore une capacité');
+  assert.equal(engin.charbonDisponible(), 0, 'une soute absente nourrit encore la machine');
+
+  assert.equal(R.soutage(engin, monde, 60), 0, 'du charbon est entré dans une soute qui n’est pas là');
+  assert.equal(engin.soute, 120, 'le soutage a rempli la soute démontée');
+
+  const etat = R.etatDuJeu(engin, monde, R.nouvelleMemo());
+  assert.match(etat.soutage.mot, /soute/, 'l’écran ne dit pas que c’est la soute qui manque');
+  assert.doesNotMatch(etat.soutage.mot, /pleine/, 'l’écran dit « pleine » d’une soute absente');
+});
+
+test('la rivière est là, son eau attend la pompe : le soutage ne remplit rien', () => {
+  const riviere = M.nouveauMonde({ riviere: { a: 40, longueur: 10 } });
+  const engin = M.nouvelEngin(R.PIECES_DE_BASE);
+  engin.citerne = 0;
+  engin.distance = 45;
+  rouler(engin, riviere, { duree: 10 });
+
+  const avant = engin.citerne;
+  assert.equal(R.soutage(engin, riviere, 120), 0, 'le soutage reprend de l’eau : la pompe est livrée par erreur');
+  assert.equal(engin.citerne, avant, 'la citerne s’est remplie à la main, sans pompe');
+
+  // La pompe montée au catalogue ne change rien non plus : ce qui manque est le
+  // geste à l’écran, et le billet ne le livre pas.
+  engin.brancher('pompe');
+  engin.commandes.pompe = 1;
+  assert.equal(R.soutage(engin, riviere, 120), 0, 'une pompe au catalogue suffit à remplir la citerne');
+  assert.equal(engin.citerne, avant, 'la citerne a grossi à la rivière sans que la pompe soit livrée');
+
+  // Mais la rive se voit, et ce qui manque se dit.
+  const etat = R.etatDuJeu(engin, riviere, R.nouvelleMemo());
+  assert.ok(etat.sol.riviere, 'la rivière a disparu du tracé');
+  assert.match(etat.soutage.mot, /pompe/, 'rien ne dit au joueur ce qui manque pour reprendre de l’eau');
+});
+
+test('à sec, la machine perd ses tours et l’écran le nomme', () => {
+  const monde = M.nouveauMonde({});
+  const engin = M.nouvelEngin(R.PIECES_DE_BASE);
+  engin.citerne = 6;   // l’eau d’un aller simple
+  engin.commandes.feu = 1;
+  engin.commandes.regulateur = 1;
+  rouler(engin, monde, { duree: 50 });
+  engin.pousser(0.4);
+
+  // Le mot vient pendant que la machine a encore de la vitesse : c’est lui qui
+  // dit au joueur pourquoi les tours s’en vont, pas une aiguille qui faiblit.
+  let t = 50;
+  while (t < 200 && R.situation(engin, monde) !== 'sec') { rouler(engin, monde, { duree: PAS }); t += PAS; }
+  assert.equal(R.situation(engin, monde), 'sec', 'la chaudière ne s’est jamais trouvée à sec');
+  const vitesseAuMot = Math.abs(engin.vitesse());
+  assert.ok(vitesseAuMot > 0.5, `le mot « À sec » arrive machine déjà immobile (${vitesseAuMot.toFixed(2)} m/s)`);
+  assert.equal(R.etatDuJeu(engin, monde).mot, R.MOTS_DE_SITUATION.sec, 'l’écran ne nomme pas « À sec »');
+
+  // Et les tours partent : la machine ne tient pas sur sa pression seule.
+  rouler(engin, monde, { duree: 60 });
+  assert.ok(Math.abs(engin.vitesse()) < vitesseAuMot * 0.25, `à sec depuis une minute, la machine file à ${(engin.vitesse() * 3.6).toFixed(1)} km/h`);
+  assert.equal(R.etatDuJeu(engin, monde).mot, R.MOTS_DE_SITUATION.sec, 'immobile à sec, l’écran a changé de mot');
+
+  // Ce qui manque est nommé avec l’eau : la rivière est là-bas, sa pompe non.
+  assert.match(R.etatDuJeu(engin, monde, R.nouvelleMemo()).soutage.mot, /pompe|eau/, 'à sec, l’écran ne dit rien de ce qui manque');
+});
+
+// Le monde est passé à la physique tel que l’image le reçoit. La promesse est là
+// parce que la ligne rend la rivière, le vent et le charbonnage comme des
+// *endroits* : donnés tels quels, `monde.riviere` est vrai à cent mètres de l’eau
+// — une pompe montée remplirait la citerne en rase campagne — et `monde.vent` est
+// un objet : une voile ou une éolienne multipliant par là dessus rend la distance
+// perdue. `mondeSousLesRoues` existe pour ça depuis le billet #6.
+test('le monde que l’image passe à la physique est celui sous les roues', () => {
+  const source = sourceProjection();
+  assert.match(source, /mondeSousLesRoues/, 'aucune conversion du monde sous les roues dans la projection');
+  assert.equal(
+    /passerLImage\(\s*engin,\s*monde\s*[,)]/.test(source),
+    false,
+    'l’image passe la ligne entière à la physique : la rivière serait vraie partout',
+  );
+});

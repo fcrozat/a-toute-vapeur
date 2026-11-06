@@ -85,6 +85,9 @@
       <p class="compte"><span class="etiquette">Tours faits</span><span id="tours-dits">0 tour</span></p>
       <p class="compte"><span class="etiquette">Soute</span><span id="soute-dite">100 % — pleine</span></p>
       <p class="compte"><span class="etiquette">Citerne</span><span id="citerne-dite">100 % — pleine</span></p>
+      <!-- Le bord de route : ce que l'équipage soutire, ou ce qui lui manque pour
+           le faire. Un mot, pas une couleur, pas une aiguille à interpréter. -->
+      <p class="compte"><span class="etiquette">Soutage</span><span id="soutage-dit">—</span></p>
       <p class="compte"><span class="etiquette">Masse embarquée</span><span id="masse-dite">0 t</span></p>
       <p class="compte"><span class="etiquette">Rendement</span><span id="rendement-dit">—</span></p>
     </section>
@@ -963,6 +966,84 @@ const reglesDuJeu = (() => {
     return pas;
   }
 
+  // --- Le soutage : le charbon se reprend en route -------------------------
+  //
+  // Un charbonnage n'est pas une pompe à essence : on y descend, on remplit la
+  // soute à la pelle, et ça prend du temps. Le débit est donc une règle du jeu,
+  // pas une constante physique — le modèle ne le voit pas, aucune loi ne bouge,
+  // et la reprise ne rejoint jamais `charbonBrule` : ce qui entre à la soute n'a
+  // pas brûlé. Le rendement du billet #4 reste la distance rapportée au charbon
+  // brûlé, pas au charbon touché.
+  //
+  // Le chiffre est choisi pour que la panne se lise : trois cents kilos vides
+  // redemandent une minute de machine à l'arrêt. Assez pour que le joueur compte
+  // les pelletées et voie la pression retomber, pas assez pour qu'il quitte
+  // l'écran. Ce n'est pas un plafond inventé pour faire passer la rampe du bout :
+  // la contenance vient du catalogue, et la masse ne suit pas les réserves
+  // (billet #19) — un plein ne rend pas l'élan, il rend du charbon.
+  const DEBIT_DE_SOUTAGE = 5;   // kilogrammes repris par seconde de temps machine
+
+  // Un endroit du décor sous les roues, à la forme que la ligne rend : un
+  // { a, longueur }, ou un simple booléen pour qui n'a qu'une plaine à décrire.
+  // (regionDe et onEstDedans sont plus bas, dans les vues du monde.)
+  function onEstA(engin, monde, champ) {
+    const region = regionDe(monde[champ]);
+    return region ? onEstDedans(region, engin.distance) : Boolean(monde[champ]);
+  }
+
+  // Reprendre du charbon à l'endroit du décor qui en donne. Rien ici ne garde de
+  // mémoire : l'appel suivant reprend où l'engin en est.
+  function soutage(engin, monde, dt) {
+    // Le soutage veut l'arrêt, et l'arrêt veut dire ce que dit le glossaire :
+    // « rien ne tourne ». La raison qui a posé la machine là — feu clos, vapeur
+    // renfermée sur un point mort, rampe trop raide, chaudière à sec — ne regarde
+    // pas le charbonnage. Une machine dont les roues tournent n'a personne à la
+    // pelle, même à cheval sur le terril.
+    if (engin.mouvement()) return 0;
+    if (!onEstA(engin, monde, 'charbonnage')) return 0;
+    // Une soute qui n'est pas montée ne se remplit pas (billet #18) : la quantité
+    // qu'elle a gardée survit au démontage, mais plus personne n'y atteint, et le
+    // terril n'a rien à mettre dans une caisse qui n'est pas là. `capacite` rend
+    // zéro pièce absente : c'est lui qui ferme la grille, pas un test d'absence.
+    const capacite = engin.capacite('soute');
+    if (capacite <= 0) return 0;
+    const place = capacite - engin.soute;
+    if (place <= 0) return 0;
+    const seconde = Number.isFinite(dt) && dt > 0 ? dt : 0;
+    const repris = Math.min(place, DEBIT_DE_SOUTAGE * seconde);
+    engin.soute += repris;
+    return repris;
+  }
+
+  // L'eau de la rivière, elle, attend son arbre de pompe. Le modèle sait déjà
+  // puiser (`pompe` montée, commande ouverte, circuit fermé) ; ce qui manque est
+  // le geste à l'écran, et ce billet ne le livre pas. `soutage` ne touche donc
+  // jamais `engin.citerne` — ni à la rivière, ni ailleurs, ni pompe montée.
+  // Ce que le bord de route a à dire, en un mot. Le même genre de phrase tout du
+  // long : ce que l'équipage fait, ou ce qui lui manque pour le faire. Les mots
+  // viennent du glossaire — soutage, soute, citerne, rivière, pompe, à sec — et
+  // « remplir » n'y est pas le verbe du jeu.
+  function soutageVu(engin, monde) {
+    if (onEstA(engin, monde, 'charbonnage')) {
+      if (engin.mouvement()) return { mot: 'en marche, on ne soutire pas' };
+      if (engin.capacite('soute') <= 0) return { mot: 'sans soute, rien à soutirer' };
+      if (engin.soute >= engin.capacite('soute')) return { mot: 'soute pleine' };
+      return { mot: 'soutage en cours' };
+    }
+    // Plus rien à brûler n'est pas la seule panne du trajet : une chaudière à sec
+    // perd ses tours, et l'aiguille seule ne le dit pas. Ici on nomme ce qui
+    // manque d'eau, à la rivière comme en rase campagne.
+    const soif = engin.chaudiere.aSec || engin.eauDisponible() <= 0;
+    if (!soif) return { mot: '' };
+    // Une pompe montée n'est pas ce qui manque : ce qui manque est l'arbre de
+    // pompe du décor, et le mot reste vrai dans les deux cas.
+    return {
+      mot: onEstA(engin, monde, 'riviere')
+        ? 'rivière : il manque une pompe'
+        : 'à sec : il manque une pompe',
+    };
+  }
+
   // --- Ce que la machine a à dire de reste ---
 
   // Les comptes que l'élève relève entre deux essais. Le modèle les tient déjà
@@ -1437,6 +1518,9 @@ const reglesDuJeu = (() => {
       chaudiere: chaudiereVue(engin),
       comptes: comptesVus(engin),
       reservoirs: reservoirsVus(engin),
+      // Ce que le bord de route dit du charbon et de l'eau. La projection écrit
+      // ce mot, elle ne le devine pas : le soutage est une règle, pas un dessin.
+      soutage: soutageVu(engin, monde),
       rendement: rendementVu(engin),
     };
   }
@@ -1450,6 +1534,7 @@ const reglesDuJeu = (() => {
     nouvelleMemo, MOT_DU_RENDEMENT, RENDEMENT_EN_ATTENTE,
     GRAINE_DU_JEU, SEUIL_DE_RAMPE, nombreDeLaGraine, ligneDeLaGraine, mondeDeLaLigne, mondeDeLaGraine,
     mondeSousLesRoues, prochaineRampe,
+    soutage, DEBIT_DE_SOUTAGE,
   };
   return reglesDuJeu;
 })();
@@ -1482,6 +1567,7 @@ const reglesDuJeu = (() => {
     toursDits: document.getElementById('tours-dits'),
     souteDite: document.getElementById('soute-dite'),
     citerneDite: document.getElementById('citerne-dite'),
+    soutageDit: document.getElementById('soutage-dit'),
     rendementDit: document.getElementById('rendement-dit'),
     masseDite: document.getElementById('masse-dite'),
     garage: document.getElementById('garage-ouvrir'),
@@ -1506,7 +1592,14 @@ const reglesDuJeu = (() => {
 
   // On ouvre le rideau sur une chaudière chaude : sans ça, il faudrait une
   // minute de feu avant que l'écran montre quoi que ce soit.
-  R.passerLImage(engin, monde, { duree: 40 });
+  // Le monde que sent la physique est celui sous les roues, pas la ligne entière :
+  // donnée telle quelle, `monde.riviere` est vraie à cent mètres de l'eau — une
+  // pompe montée soutirerait en rase campagne — et `monde.vent` est un objet, que
+  // la voile multiplierait. L'état, lui, garde la ligne entière : le dessin a
+  // besoin de voir la rivière avant d'y être.
+  const mondeSousLaRoue = () => R.mondeSousLesRoues(engin, monde);
+
+  R.passerLImage(engin, mondeSousLaRoue(), { duree: 40 });
   engin.pousser();
 
   // --- L'horloge ---
@@ -2274,6 +2367,9 @@ const reglesDuJeu = (() => {
     ecrire(vues.toursDits, motsDeTours(etat.comptes.tours));
     ecrire(vues.souteDite, motsDeNiveau(etat.reservoirs.soute));
     ecrire(vues.citerneDite, motsDeNiveau(etat.reservoirs.citerne));
+    // Le mot du soutage vient des règles, entier : la projection ne devine pas si
+    // l'on est à un charbonnage, elle écrit ce que l'état en dit.
+    ecrire(vues.soutageDit, etat.soutage.mot || '—');
     ecrire(vues.rendementDit, motsDeRendement(etat.rendement));
     dessineLetabli(etat);
   }
@@ -2342,7 +2438,14 @@ const reglesDuJeu = (() => {
     const ecoule = instantPrecedent === null ? 0 : Math.min((instant - instantPrecedent) / 1000, PAS_MAX_PAR_IMAGE);
     instantPrecedent = instant;
     // Une image, c'est le même pas de modèle, autant de fois que le palier le demande.
-    if (!enPause && ecoule > 0) R.passerLImage(engin, monde, { duree: ecoule, vitesse: vitesseDuTemps });
+    // Le soutage avance du même temps que la machine : une image à l'arrêt sur le
+    // charbonnage reprend ce que la pelle emporte en ce temps-là, au palier de
+    // vitesse près comme partout ailleurs.
+    if (!enPause && ecoule > 0) {
+      const sousLaRoue = mondeSousLaRoue();
+      const pas = R.passerLImage(engin, sousLaRoue, { duree: ecoule, vitesse: vitesseDuTemps });
+      R.soutage(engin, sousLaRoue, pas * ecoule);
+    }
     const etat = R.etatDuJeu(engin, monde, memo);
     crayon.clearRect(0, 0, large, haut);
     dessineLeSol(etat);
