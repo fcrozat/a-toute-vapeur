@@ -1,4 +1,0 @@
-{"type":"phase","filePath":"<pi-lens>","phase":"extension_loaded","durationMs":32,"metadata":{"loadedFrom":"dist"},"ts":"2026-11-06T06:18:36.244Z","pid":456259,"turnId":"turn:0"}
-{"type":"phase","filePath":"<pi-lens>","phase":"host_boot","durationMs":28,"metadata":{"loadedFrom":"dist","evaluationOrdinal":1},"ts":"2026-11-06T06:18:36.244Z","pid":456259,"turnId":"turn:0"}
-{"type":"phase","filePath":"<pi-lens>","phase":"extension_eval","durationMs":4,"metadata":{"loadedFrom":"dist"},"ts":"2026-11-06T06:18:36.244Z","pid":456259,"turnId":"turn:0"}
-{"type":"phase","phase":"ast_grep_rules_resolved","filePath":"/home/cooper/.pi/agent/npm/node_modules/pi-lens/rules","durationMs":0,"metadata":{"status":"healthy","entryCount":301},"ts":"2026-11-06T06:18:36.244Z","pid":456259,"turnId":"turn:0"}
