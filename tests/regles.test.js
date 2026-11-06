@@ -1136,3 +1136,133 @@ test("l'établi liste les pièces de l'engin avec leur nombre", () => {
   const citerne = rangs.find((r) => r.id === 'citerne');
   assert.equal(citerne.nom, 'Citerne', "l'établi n'emploie pas le mot du glossaire");
 });
+
+// Le chiffre du billet, mesuré et non réparé : vingt-huit pièces au catalogue,
+// treize presentees a qui ouvre le jeu. Les quinze autres sont verrouillees, donc
+// absentes du tiroir — ni grisées, ni expliquées, ni nommées (ADR 0006).
+test('sur une partie neuve, l’établi présente treize pièces sur vingt-huit', () => {
+  const catalogue = Object.keys(M.CATALOGUE);
+  assert.equal(catalogue.length, 28, 'le catalogue ne compte plus vingt-huit pièces : le compte du billet est à reprendre');
+
+  const engin = M.nouvelEngin(R.PIECES_DE_BASE);
+  const rangs = R.etatDuJeu(engin, plaine(), R.nouvelleMemo()).etabli.pieces;
+  assert.equal(rangs.length, 13, `l'établi d'une partie neuve présente ${rangs.length} pièces, et non treize`);
+
+  for (const id of catalogue.filter((id) => !R.PIECES_DE_BASE.includes(id))) {
+    assert.ok(!rangs.some((r) => r.id === id), `la pièce verrouillée « ${id} » est nommée à l'établi`);
+    assert.ok(!rangs.some((r) => r.nom === M.CATALOGUE[id].nom), `la pièce verrouillée « ${id} » est nommée à l'établi sous son mot du métier`);
+  }
+});
+
+// Ce qui ouvre une pièce, c'est la mémoire du jeu — les seuils qui l'écrivent sont
+// le billet #10. Ici l'établi sait déjà lire `deblocages` : une pièce décrochée se
+// branche, une autre ne se montre pas.
+test('une pièce décrochée par la mémoire entre à l’établi, avec zéro exemplaire', () => {
+  const engin = M.nouvelEngin(R.PIECES_DE_BASE);
+  const memo = R.nouvelleMemo();
+  memo.deblocages.push('second_cylindre');
+
+  const rangs = R.etatDuJeu(engin, plaine(), memo).etabli.pieces;
+  const rang = rangs.find((r) => r.id === 'second_cylindre');
+  assert.ok(rang, "une pièce décrochée ne se branche pas : elle n'est pas à l'établi");
+  assert.equal(rang.nombre, 0, 'une pièce qui vient de s’ouvrir est déjà montée deux fois');
+  assert.equal(rang.peutBrancher, true, 'une pièce ouverte refuse déjà de se brancher');
+  assert.equal(rang.peutDemonter, false, "on ne démonte pas ce qu'on ne porte pas");
+});
+
+// La structure ne se dédouble pas : un cylindre de plus n'a pas de sens, une
+// citerne de plus si (spec, décision 7). `limite` est une donnée du catalogue ;
+// c'est l'établi qui la fait respecter, le modèle ne refuse rien.
+const STRUCTURE = ['crosse', 'bielle', 'vilebrequin', 'cylindre', 'tiroir', 'excentrique'];
+
+test('les pièces de structure ne se dédoublent pas, quand bien même on les clique dix fois', () => {
+  for (const id of STRUCTURE) {
+    assert.equal(M.CATALOGUE[id].limite, 1, `« ${id} » : le catalogue ne borne pas cette pièce de structure à un exemplaire`);
+
+    const engin = M.nouvelEngin(R.PIECES_DE_BASE);
+    const memo = R.nouvelleMemo();
+    memo.deblocages.push(id);   // le vilebrequin n'est pas de l'engin d'ouverture : on le suppose décroché
+    const dejaPortee = engin.pieces[id] || 0;
+
+    // Neuf clics d'affilée : il ne montera jamais qu'un exemplaire de la pièce.
+    const branches = [];
+    for (let n = 0; n < 9; n += 1) branches.push(R.brancherPiece(engin, memo, id));
+    assert.equal(branches.filter(Boolean).length, 1 - dejaPortee, `« ${id} » : l'établi a monté ${engin.pieces[id]} exemplaires d'une pièce de structure`);
+    assert.equal(engin.pieces[id], 1, `« ${id} » : l'engin porte ${engin.pieces[id]} exemplaires d'une pièce de structure`);
+
+    const rang = R.etatDuJeu(engin, plaine(), memo).etabli.pieces.find((r) => r.id === id);
+    assert.equal(rang.nombre, 1, `« ${id} » : l'établi affiche ${rang.nombre} exemplaires`);
+    assert.equal(rang.peutBrancher, false, `« ${id} » : l'établi tend encore le bouton pour une pièce de structure comblée`);
+  }
+});
+
+// Promesse de porte-monnaie vide (billet #8) : la monnaie d'une pièce, c'est la
+// masse embarquée (ADR 0004, ADR 0006). Ni le charbon de la soute ni l'eau de la
+// citerne ne s'échangent quand on visse une pièce.
+test('une pièce débloquée se branche sans consommer un grain de charbon', () => {
+  const monde = plaine();
+  const engin = demarrer(machineVapeur(), monde);
+  const memo = R.nouvelleMemo();
+
+  const charbonAvant = engin.charbonBrule;
+  const souteAvante = engin.soute;
+  const eauAvante = engin.citerne;
+  const masseAvante = R.etatDuJeu(engin, monde, memo).etabli.masse;
+
+  assert.equal(R.brancherPiece(engin, memo, 'citerne'), true, "l'établi refuse la citerne que l'engin porte déjà");
+
+  assert.equal(engin.charbonBrule, charbonAvant, 'brancher une pièce a brûlé du charbon');
+  assert.equal(engin.soute, souteAvante, 'brancher une pièce a pris du charbon à la soute');
+  assert.equal(engin.citerne, eauAvante, 'brancher une pièce a pris de l’eau à la citerne');
+
+  const apres = R.etatDuJeu(engin, monde, memo);
+  assert.ok(Number.isFinite(masseAvante), "l'établi ne rend pas la masse embarquée");
+  assert.ok(Math.abs(apres.etabli.masse - (masseAvante + 0.2)) < 1e-9, `brancher une citerne de 200 kg rend ${apres.etabli.masse} t au lieu de ${masseAvante + 0.2} t`);
+
+  const rang = apres.etabli.pieces.find((r) => r.id === 'citerne');
+  assert.equal(rang.nombre, 2, "l'établi ne compte pas la citerne de plus");
+});
+
+// Le démontage est la partie dangereuse du billet : une machine à vapeur n'est pas
+// une liste de modules optionnels. Ici on vérifie la monnaie — la masse rendue, ni
+// charbon ni eau touchés — et que rien ne compte en négatif. Les scénarios qui
+// ferraillent avec la physique (soupape en pleine chauffe, chaudière retirée) ont
+// leur promesse plus bas.
+test('toute pièce se démonte, rend sa masse, et ne touche ni au charbon ni à l’eau', () => {
+  const monde = plaine();
+  const engin = demarrer(machineVapeur(), monde);
+  const memo = R.nouvelleMemo();
+
+  const charbonAvant = engin.charbonBrule;
+  const souteAvante = engin.soute;
+  const eauAvante = engin.citerne;
+  const masseAvante = R.etatDuJeu(engin, monde, memo).etabli.masse;
+
+  assert.equal(R.demonterPiece(engin, memo, 'citerne'), true, "l'établi refuse de démonter la citerne que l'engin porte");
+  assert.equal(engin.pieces.citerne, 0, 'la citerne démontrée est encore comptée');
+  assert.equal(engin.charbonBrule, charbonAvant, 'démonter une pièce a brûlé du charbon');
+  assert.equal(engin.soute, souteAvante, 'démonter une pièce a rendu du charbon à la soute');
+  assert.equal(engin.citerne, eauAvante, 'démonter une pièce a rendu de l’eau à la citerne');
+
+  const apres = R.etatDuJeu(engin, monde, memo);
+  assert.ok(Math.abs(masseAvante - apres.etabli.masse - 0.2) < 1e-9, `démonter une citerne de 200 kg laisse ${apres.etabli.masse} t au lieu de ${masseAvante - 0.2} t`);
+
+  const rang = apres.etabli.pieces.find((r) => r.id === 'citerne');
+  assert.equal(rang.nombre, 0, "l'établi compte encore une citerne qui n'y est plus");
+  assert.equal(rang.peutDemonter, false, "l'établi tend encore à démonter ce que l'engin ne porte pas");
+  assert.equal(rang.peutBrancher, true, 'une pièce ôtée ne se remonte pas : l’établi refuse de la brancher');
+
+  // On ne démonte pas deux fois la même pièce : rien ne passe en négatif.
+  for (let n = 0; n < 5; n += 1) {
+    assert.equal(R.demonterPiece(engin, memo, 'citerne'), false, 'l’établi démonte ce qui n’est plus là');
+  }
+  assert.equal(engin.pieces.citerne, 0, `compter en négatif : ${engin.pieces.citerne} citernes`);
+
+  // Toute pièce de l'engin d'ouverture se démonte, y compris celles dont le modèle
+  // croit avoir besoin pour exister.
+  const depouille = demarrer(machineVapeur(), plaine());
+  for (const id of R.PIECES_DE_BASE) {
+    assert.equal(R.demonterPiece(depouille, memo, id), true, `« ${id} » : l'établi refuse de démonter cette pièce`);
+    assert.equal(depouille.pieces[id], 0, `« ${id} » : ${depouille.pieces[id]} exemplaires après démontage`);
+  }
+});

@@ -158,18 +158,23 @@ const modeleVapeur = (() => {
 
   // Le catalogue : ce qu'on peut visser sur le châssis. `nom` est le mot vrai du
   // métier, celui que le joueur survole pour avoir l'explication de Braise.
+  // `limite` borne le nombre d'exemplaires (spec, décision 7) : la structure ne se
+  // dédouble pas — deux crosses sur une même tige n'ont pas de sens —, ce qui est
+  // réservoir ou capacité si. Une pièce sans `limite` n'est bornée par rien : les
+  // seuils du garage sont du contenu à régler (ADR 0006), pas une loi physique. Le
+  // modèle fournit la donnée, c'est l'établi qui la fait respecter.
   const CATALOGUE = {
     chaudiere: { nom: 'Chaudière', famille: 'machine', masse: 1.2 },
     foyer: { nom: 'Foyer', famille: 'machine', masse: 0.15 },
     soute: { nom: 'Soute à charbon', famille: 'machine', masse: 0.2, capacite: 300 },
     citerne: { nom: 'Citerne', famille: 'machine', masse: 0.2, capacite: 240 },
-    cylindre: { nom: 'Cylindre', famille: 'machine', masse: 0.35 },
-    tiroir: { nom: 'Tiroir de distribution', famille: 'machine', masse: 0.06 },
-    excentrique: { nom: 'Excentrique', famille: 'machine', masse: 0.05 },
+    cylindre: { nom: 'Cylindre', famille: 'machine', masse: 0.35, limite: 1 },
+    tiroir: { nom: 'Tiroir de distribution', famille: 'machine', masse: 0.06, limite: 1 },
+    excentrique: { nom: 'Excentrique', famille: 'machine', masse: 0.05, limite: 1 },
     regulateur: { nom: 'Régulateur', famille: 'machine', masse: 0.05 },
-    crosse: { nom: 'Crosse de piston', famille: 'machine', masse: 0.05 },
-    bielle: { nom: 'Bielle', famille: 'machine', masse: 0.08 },
-    vilebrequin: { nom: 'Vilebrequin', famille: 'machine', masse: 0.2 },
+    crosse: { nom: 'Crosse de piston', famille: 'machine', masse: 0.05, limite: 1 },
+    bielle: { nom: 'Bielle', famille: 'machine', masse: 0.08, limite: 1 },
+    vilebrequin: { nom: 'Vilebrequin', famille: 'machine', masse: 0.2, limite: 1 },
     secondes_bielles: { nom: 'Secondes bielles', famille: 'machine', masse: 0.07 },
     roues: { nom: 'Roues', famille: 'machine', masse: 0.3 },
     boite_a_fumee: { nom: 'Boîte à fumée', famille: 'machine', masse: 0.12 },
@@ -330,6 +335,16 @@ const modeleVapeur = (() => {
         if (!CATALOGUE[id]) throw new Error(`Pièce inconnue au catalogue : « ${id} »`);
         this.pieces[id] = (this.pieces[id] || 0) + 1;
         if (!this.ordre.includes(id)) this.ordre.push(id);
+        return this;
+      },
+      // Démonter une pièce : l'envers de `brancher`, et la partie dangereuse du billet.
+      // Le modèle ôte un exemplaire et pas davantage : descendre sous zéro n'a pas de
+      // sens. Une pièce ôtée reste au catalogue et garde sa place dans l'ordre : la
+      // machine continue de tourner avec ce qu'elle a, c'est à l'établi de décider ce
+      // qui se démonte et à l'écran de montrer ce qui reste.
+      debrancher(id) {
+        if (!CATALOGUE[id]) throw new Error(`Pièce inconnue au catalogue : « ${id} »`);
+        this.pieces[id] = Math.max(0, (this.pieces[id] || 0) - 1);
         return this;
       },
       // Le changement de marche renvoie l'excentrique de l'autre côté : le couple
@@ -885,14 +900,62 @@ const reglesDuJeu = (() => {
     return { ...engin.pieces };
   }
 
-  // L'établi : le tiroir du garage, en une ligne par pièce de l'engin. Le nom est
-  // le mot vrai du métier, celui du catalogue et du glossaire — jamais l'identifiant.
-  function piecesDeLetabli(engin) {
-    return engin.ordre.map((id) => ({
-      id,
-      nom: modeleVapeur.CATALOGUE[id].nom,
-      nombre: engin.pieces[id] || 0,
-    }));
+  // La borne d'exemplaires d'une pièce, telle que le catalogue la donne. Une pièce
+  // qui n'en déclare pas n'est bornée par rien : l'établi ne l'invente pas.
+  function limiteDePiece(id) {
+    const borne = modeleVapeur.CATALOGUE[id] && modeleVapeur.CATALOGUE[id].limite;
+    return typeof borne === 'number' && borne > 0 ? borne : Infinity;
+  }
+
+  // Brancher une pièce à l'établi : un clic, un exemplaire de plus, et rien d'autre.
+  // Ni charbon ni eau ne bougent — une pièce se paie en masse (ADR 0004, ADR 0006).
+  // C'est ici que la borne du catalogue est opposée, et pas dans `brancher` : le
+  // modèle dit ce qu'il y a au catalogue, l'établi décide ce qu'on y visse.
+  function brancherPiece(engin, memo, id) {
+    if (!modeleVapeur.CATALOGUE[id] || !pieceOuverte(id, memo)) return false;
+    if ((engin.pieces[id] || 0) >= limiteDePiece(id)) return false;
+    engin.brancher(id);
+    return true;
+  }
+
+  // Démonter une pièce à l'établi. L'ouverture ne commande pas le geste : on démonte
+  // toujours ce qu'on porte, même une pièce que le joueur n'a jamais décrochée — ce
+  // serait la punir de rester vissée. Rien à ôter, rien ne se passe, et surtout rien
+  // ne compte en négatif.
+  function demonterPiece(engin, memo, id) {
+    if (!modeleVapeur.CATALOGUE[id]) return false;
+    if ((engin.pieces[id] || 0) <= 0) return false;
+    engin.debrancher(id);
+    return true;
+  }
+
+  // Une pièce est ouverte à l'établi si l'engin d'ouverture la porte déjà, ou si la
+  // mémoire du jeu l'a décrochée. Ce qui écrit `deblocages` — trois calages, une
+  // rampe refusée, un réservoir à sec — est le billet #10 : l'établi ne fait que lire.
+  function pieceOuverte(id, memo) {
+    if (PIECES_DE_BASE.includes(id)) return true;
+    const decrochees = (memo && memo.deblocages) || [];
+    return decrochees.includes(id);
+  }
+
+  // L'établi : le tiroir du garage, en une ligne par pièce ouverte. Le nom est le mot
+  // vrai du métier, celui du catalogue et du glossaire — jamais l'identifiant. Une
+  // pièce verrouillée n'est pas de ces lignes : ni grisée, ni expliquée (ADR 0006).
+  function piecesDeLetabli(engin, memo) {
+    const lignes = [];
+    const connues = (id) => Boolean(modeleVapeur.CATALOGUE[id]);
+    for (const id of [...PIECES_DE_BASE, ...((memo && memo.deblocages) || [])]) {
+      if (!connues(id) || lignes.some((ligne) => ligne.id === id)) continue;
+      const nombre = engin.pieces[id] || 0;
+      lignes.push({
+        id,
+        nom: modeleVapeur.CATALOGUE[id].nom,
+        nombre,
+        peutBrancher: nombre < limiteDePiece(id),
+        peutDemonter: nombre > 0,
+      });
+    }
+    return lignes;
   }
 
   const borne01 = (v) => (v < 0 ? 0 : v > 1 ? 1 : v);
@@ -1190,7 +1253,7 @@ const reglesDuJeu = (() => {
   // L'unique interface lue par la projection (spec, décision 3). Si l'affichage
   // a besoin d'une valeur de plus, c'est ici qu'elle entre — jamais un plongeon
   // dans l'engin.
-  function etatDuJeu(engin, monde) {
+  function etatDuJeu(engin, monde, memo) {
     const s = situation(engin, monde);
     return {
       situation: s,
@@ -1212,7 +1275,9 @@ const reglesDuJeu = (() => {
       machine: etatDeLaMachine(engin),
       distribution: etatDeLaDistribution(engin),
       pieces: piecesPortees(engin),
-      etabli: { pieces: piecesDeLetabli(engin) },
+      // La monnaie d'une pièce, c'est la masse embarquée (ADR 0004) : c'est ce nombre
+      // que le tiroir montre à qui en branche ou en démonte une.
+      etabli: { pieces: piecesDeLetabli(engin, memo), masse: engin.masseTotale() },
       fumee: fumeeDite(engin),
       sol: solVu(engin, monde),
       chaudiere: chaudiereVue(engin),
@@ -1226,6 +1291,7 @@ const reglesDuJeu = (() => {
     situation, etatDuJeu, MOTS_DE_SITUATION, FORMES_DE_SITUATION, FEU_BAS, ZONE_SOUPAPE,
     PIECES_DE_BASE,
     commandeDuCurseur, pourCentDuRegulateur, motDuRegulateur,
+    piecesDeLetabli, limiteDePiece, brancherPiece, demonterPiece,
     VITESSES_DU_TEMPS, pasDeLImage, passerLImage,
     nouvelleMemo, MOT_DU_RENDEMENT, RENDEMENT_EN_ATTENTE,
     GRAINE_DU_JEU, SEUIL_DE_RAMPE, nombreDeLaGraine, ligneDeLaGraine, mondeDeLaLigne, mondeDeLaGraine,
