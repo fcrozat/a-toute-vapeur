@@ -1,0 +1,1449 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="theme-color" content="#0b0f16">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<title>Moteur Fou — l’atelier des moteurs impossibles</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='88'%3E%F0%9F%8F%8E%EF%B8%8F%3C/text%3E%3C/svg%3E">
+<style>
+*{box-sizing:border-box}
+:root{
+  --panel:#151b26; --panel2:#1e2735; --line:#2c3a4e;
+  --ink:#eaf1fb; --dim:#93a4bd;
+  --acc:#ffd23f; --acc2:#2ee6d6; --hot:#ff5c7a; --good:#7ddf6a;
+}
+html,body{margin:0;padding:0;height:100%;overflow:hidden;overscroll-behavior:none;position:fixed;inset:0}
+body{
+  background:#0b0f16;color:var(--ink);
+  font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+  font-size:clamp(14px,1.7vmin,18px);
+  -webkit-tap-highlight-color:transparent;
+  -webkit-user-select:none;user-select:none;touch-action:none;
+  display:flex;flex-direction:column;
+}
+b,strong{font-weight:800}
+
+/* ---------- barre du haut ---------- */
+header{
+  flex:0 0 auto;display:flex;align-items:center;gap:10px;
+  padding:max(6px,env(safe-area-inset-top)) 10px 6px;
+  background:linear-gradient(180deg,#141c28,#0d131d);border-bottom:1px solid var(--line);
+}
+.logo{font-size:clamp(16px,2.6vmin,24px);letter-spacing:.5px;white-space:nowrap}
+.logo em{font-style:normal;color:var(--acc)}
+.spacer{flex:1 1 auto}
+.rec{font-size:clamp(12px,1.8vmin,16px);color:var(--acc);font-weight:700;white-space:nowrap;
+  background:#0a1017;border:1px solid #3a3216;border-radius:999px;padding:4px 10px}
+.tools{display:flex;gap:6px}
+.ico{width:clamp(40px,6.4vmin,52px);height:clamp(40px,6.4vmin,52px);font-size:clamp(18px,2.8vmin,24px);
+  background:var(--panel2);color:var(--ink);border:1px solid var(--line);border-radius:14px}
+.ico:active{transform:scale(.92);background:#28374b}
+
+/* ---------- bandeau d’info ---------- */
+#fact{
+  flex:0 0 auto;min-height:2.6em;display:flex;align-items:center;gap:8px;
+  padding:4px 12px;font-size:clamp(11px,1.65vmin,15px);color:var(--dim);
+  background:#0a0f16;border-bottom:1px solid #1a2331;line-height:1.25
+}
+#fact b{color:var(--ink)}
+#fact .big{font-size:1.5em}
+
+/* ---------- scène ---------- */
+main{flex:1 1 auto;position:relative;min-height:40vh;overflow:hidden}
+#scene{position:absolute;inset:0;width:100%;height:100%;display:block}
+#slots{position:absolute;inset:0;pointer-events:none}
+.slot{
+  position:absolute;pointer-events:auto;border-radius:50%;
+  border:3px dashed rgba(255,255,255,.34);background:rgba(8,12,18,.42);
+  display:flex;flex-direction:column;align-items:center;justify-content:center;gap:0;
+  transition:transform .13s ease,border-color .13s,background .13s;overflow:visible
+}
+.slot .e{line-height:1}
+.slot .lb{font-weight:800;letter-spacing:.6px;color:#cfe0f5;text-shadow:0 2px 4px #000;line-height:1;margin-top:2px}
+.slot.filled{border-style:solid;border-color:var(--acc);
+  background:radial-gradient(circle at 50% 38%,rgba(255,210,63,.34),rgba(8,12,18,.6) 70%)}
+.slot.ok{border-color:var(--acc2);transform:scale(1.16);background:radial-gradient(circle at 50% 38%,rgba(46,230,214,.4),rgba(8,12,18,.5) 70%)}
+.slot.no{border-color:var(--hot);animation:shake .32s}
+@keyframes shake{0%,100%{transform:translateX(0)}20%{transform:translateX(-7px)}40%{transform:translateX(7px)}60%{transform:translateX(-5px)}80%{transform:translateX(4px)}}
+.slot.pulse{animation:pulse 1.6s infinite}
+@keyframes pulse{0%,100%{transform:scale(1)}50%{transform:scale(1.08)}}
+
+/* stats + bouton */
+#panelWrap{position:absolute;left:8px;bottom:8px;width:min(52%,360px);
+  background:rgba(8,12,18,.74);border:1px solid var(--line);border-radius:16px;padding:8px 10px;backdrop-filter:blur(3px)}
+.st{display:flex;align-items:center;gap:6px;margin:3px 0;font-size:clamp(10px,1.5vmin,13px)}
+.st .k{width:6.7em;color:var(--dim);font-weight:700;letter-spacing:.3px;white-space:nowrap}
+.st .bar{flex:1 1 auto;height:9px;border-radius:6px;background:#111a25;overflow:hidden}
+.st .bar i{display:block;height:100%;border-radius:6px;background:linear-gradient(90deg,var(--acc2),var(--acc));transition:width .25s}
+.st .v{width:5.3em;text-align:right;font-weight:800;font-variant-numeric:tabular-nums}
+#verdict{margin-top:6px;font-size:clamp(11px,1.6vmin,14px);line-height:1.2}
+#verdict b{color:var(--acc)}
+#comboList{margin-top:4px;display:flex;flex-wrap:wrap;gap:4px}
+.cbadge{font-size:clamp(9px,1.3vmin,12px);background:#2a1f3d;border:1px solid #513c78;color:#e3d3ff;
+  border-radius:999px;padding:2px 7px;font-weight:700}
+#btnGo{
+  position:absolute;right:10px;bottom:10px;border:0;border-radius:20px;
+  height:clamp(58px,10vmin,84px);padding:0 clamp(14px,3vmin,30px);
+  font-size:clamp(17px,2.7vmin,26px);font-weight:900;letter-spacing:.5px;color:#241a00;
+  background:linear-gradient(180deg,#ffe27a,#ffb92e);box-shadow:0 8px 0 #a86f00,0 12px 22px rgba(0,0,0,.5);
+  animation:glow 2.2s infinite
+}
+#btnGo:active{transform:translateY(6px);box-shadow:0 2px 0 #a86f00}
+#btnGo.dim{filter:grayscale(.85) brightness(.7);animation:none}
+@keyframes glow{0%,100%{box-shadow:0 8px 0 #a86f00,0 0 0 rgba(255,210,63,0)}50%{box-shadow:0 8px 0 #a86f00,0 0 26px rgba(255,210,63,.55)}}
+
+/* HUD de l’essai */
+#hud{position:absolute;left:0;top:0;right:0;display:flex;justify-content:space-between;align-items:flex-start;padding:8px 10px;pointer-events:none}
+#hud .hleft{display:flex;gap:8px}
+#hud .box{background:rgba(8,12,18,.7);border:1px solid var(--line);border-radius:14px;padding:6px 10px;text-align:center}
+#hud .n{font-size:clamp(20px,4vmin,36px);font-weight:900;font-variant-numeric:tabular-nums;line-height:1;color:var(--acc)}
+#hud .u{font-size:clamp(9px,1.3vmin,12px);color:var(--dim);letter-spacing:1px}
+#btnStop{position:absolute;right:10px;top:50%;transform:translateY(-50%);pointer-events:auto;
+  border:0;border-radius:999px;width:clamp(58px,9vmin,76px);height:clamp(58px,9vmin,76px);
+  font-size:clamp(11px,1.6vmin,14px);font-weight:900;color:#fff;background:rgba(255,92,122,.9);border:2px solid #ffd0da}
+#hud,#btnStop{display:none}
+body.run #hud{display:flex}
+body.run #btnStop{display:block}
+body.run #slots,body.run #panelWrap,body.run #btnGo,body.run #shop,body.run #fact{display:none}
+
+/* ---------- magasin ---------- */
+footer{flex:0 0 auto;background:linear-gradient(180deg,#111823,#0a0f16);border-top:1px solid var(--line);
+  padding:6px 0 max(6px,env(safe-area-inset-bottom))}
+#tabs{display:flex;gap:6px;padding:0 10px 6px;overflow-x:auto;scrollbar-width:none}
+#tabs::-webkit-scrollbar{display:none}
+.tab{flex:0 0 auto;border:1px solid var(--line);background:#141d29;color:var(--dim);
+  border-radius:999px;padding:6px 14px;font-size:clamp(12px,1.75vmin,16px);font-weight:800;white-space:nowrap}
+.tab.on{background:linear-gradient(180deg,#ffe27a,#f5b71e);color:#241a00;border-color:#ffe9a3}
+#tray{display:flex;gap:8px;overflow-x:auto;overflow-y:hidden;scrollbar-width:none;
+  padding:2px 10px 6px;height:clamp(116px,21vmin,176px);touch-action:pan-x;-webkit-overflow-scrolling:touch}
+#tray::-webkit-scrollbar{display:none}
+.card{flex:0 0 auto;width:clamp(86px,12vmin,112px);border:2px solid var(--line);border-radius:16px;
+  background:linear-gradient(180deg,var(--panel2),var(--panel));padding:5px 3px 6px;text-align:center;position:relative}
+.card .emo{font-size:clamp(28px,5vmin,42px);line-height:1.1}
+.card .nom{font-size:clamp(10px,1.5vmin,13px);font-weight:800;line-height:1.15;min-height:2.2em;
+  display:flex;align-items:center;justify-content:center}
+.card .pips{display:flex;justify-content:center;flex-wrap:wrap;gap:3px;font-size:clamp(9px,1.25vmin,11px);color:#b9c9de}
+.card .pips span{background:#0d1520;border-radius:6px;padding:1px 4px;white-space:nowrap}
+.card.sel{border-color:var(--acc);box-shadow:0 0 0 3px rgba(255,210,63,.22)}
+.card.up{border-color:var(--acc2)}
+.card.star::after{content:"⭐";position:absolute;top:-7px;right:-5px;font-size:clamp(13px,2vmin,18px)}
+.card.lift{opacity:.3}
+#ghost{position:fixed;z-index:200;pointer-events:none;font-size:clamp(44px,7vmin,66px);
+  transform:translate(-50%,-50%) rotate(-8deg);filter:drop-shadow(0 8px 14px rgba(0,0,0,.7))}
+.hide{display:none !important}
+
+/* ---------- divers ---------- */
+#toast{position:fixed;left:50%;bottom:calc(24vh + 12px);transform:translateX(-50%);z-index:150;
+  background:#0d1622;border:1px solid #3a4c66;color:#e8f1ff;border-radius:999px;padding:9px 16px;
+  font-size:clamp(12px,1.8vmin,16px);font-weight:700;box-shadow:0 10px 30px rgba(0,0,0,.6);max-width:92vw;text-align:center}
+.modal{position:fixed;inset:0;z-index:300;background:rgba(3,6,10,.76);display:none;align-items:center;justify-content:center;padding:12px}
+.modal.show{display:flex}
+.sheet{background:linear-gradient(180deg,#18212f,#0e141d);border:1px solid #34445c;border-radius:22px;
+  padding:14px 16px;max-width:min(780px,96vw);max-height:94dvh;overflow:auto;box-shadow:0 24px 60px rgba(0,0,0,.6)}
+.sheet h2{margin:0 0 6px;font-size:clamp(18px,3vmin,28px)}
+.sheet h3{margin:14px 0 6px;font-size:clamp(13px,2vmin,18px);color:var(--acc)}
+.sheet p,.sheet li{font-size:clamp(12px,1.8vmin,16px);line-height:1.4;color:#cfdcec}
+.sheet ul{margin:4px 0;padding-left:20px}
+.row{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}
+.btn{flex:1 1 auto;border:0;border-radius:16px;padding:12px 14px;font-size:clamp(14px,2.1vmin,20px);
+  font-weight:900;background:linear-gradient(180deg,#3c4d66,#26344a);color:#eaf1fb;border:1px solid #4a5f7d}
+.btn.p{background:linear-gradient(180deg,#ffe27a,#f5b71e);color:#241a00;border:1px solid #ffe9a3}
+.btn:active{transform:scale(.97)}
+.kv{display:flex;justify-content:space-between;gap:10px;border-bottom:1px dashed #24303f;padding:5px 0;font-size:clamp(12px,1.8vmin,16px)}
+.kv b{text-align:right}
+.kv span{color:var(--dim)}
+.bigN{font-size:clamp(40px,9vmin,86px);font-weight:900;line-height:.95;color:var(--acc);font-variant-numeric:tabular-nums}
+.conv{color:#b9c9de;font-size:clamp(12px,2vmin,18px);margin-top:2px}
+.tagNew{background:var(--acc2);color:#04262b;border-radius:8px;padding:1px 6px;font-size:.8em;font-weight:900;margin-left:6px}
+.rec2{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(240px,100%),1fr));gap:6px}
+.rc{background:#0d1520;border:1px solid #253244;border-radius:12px;padding:7px 9px;font-size:clamp(11px,1.6vmin,14px);line-height:1.3}
+.rc.on{border-color:#5b7bd6;background:#131f33}
+.rc .t{font-weight:800;color:#fff}
+.rc.off .t{color:#5c6b81}
+.center{text-align:center}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="logo">🏎️ MOTEUR <em>FOU</em></div>
+  <div class="spacer"></div>
+  <div class="rec">🏆 <span id="recVal">—</span></div>
+  <div class="tools">
+    <button class="ico" id="btnRnd">🎲</button>
+    <button class="ico" id="btnClr">🧹</button>
+    <button class="ico" id="btnSnd">🔊</button>
+    <button class="ico" id="btnHelp">❓</button>
+  </div>
+</header>
+
+<div id="fact"><span class="big">👋</span><span>Fais glisser une <b>source d’énergie</b> dans le capot de la voiture&nbsp;!</span></div>
+
+<main id="stage">
+  <canvas id="scene"></canvas>
+  <div id="slots"></div>
+
+  <div id="hud">
+    <div class="hleft">
+      <div class="box"><div class="n" id="hudKmh">0</div><div class="u">KM/H</div></div>
+      <div class="box"><div class="n" id="hudM">0</div><div class="u">MÈTRES</div></div>
+      <div class="box"><div class="n" id="hudF">0</div><div class="u">⛽ CARBURANT</div></div>
+    </div>
+  </div>
+  <button id="btnStop">STOP</button>
+
+  <div id="panelWrap">
+    <div id="stats"></div>
+    <div id="verdict"></div>
+    <div id="comboList"></div>
+  </div>
+  <button id="btnGo" class="dim">🚀 ESSAYER</button>
+</main>
+
+<footer id="shop">
+  <div id="tabs"></div>
+  <div id="tray"></div>
+</footer>
+
+<div id="ghost" class="hide"></div>
+<div id="toast" class="hide"></div>
+
+<div class="modal" id="result"><div class="sheet" id="resultSheet"></div></div>
+
+<div class="modal" id="help"><div class="sheet">
+  <h2>🔧 Comment on construit un moteur fou&nbsp;?</h2>
+  <ul>
+    <li><b>1.</b> Fais glisser une <b>source d’énergie</b> ⚡ dans le capot (ou tape dessus pour la poser).</li>
+    <li><b>2.</b> Ajoute un <b>moteur</b> ⚙️ au milieu, puis un <b>équipement</b> 🎁 sur le toit.</li>
+    <li><b>3.</b> Appuie sur <b>🚀 ESSAYER</b> et regarde la voiture rouler sur la piste.</li>
+    <li>Tape une pièce déjà posée pour l’enlever. Le but&nbsp;: aller le plus <b>loin</b>, pas le plus vite&nbsp;!</li>
+  </ul>
+  <h3>🌍 Le petit plus</h3>
+  <p>Chaque carte donne une vraie information. L’essence roule bien mais salit l’air, le solaire est propre mais faible… Les meilleurs mécano·es trouvent le compromis&nbsp;! Les ⭐ montrent les pièces qui s’entendent bien ensemble.</p>
+  <h3 id="recTitle">🧪 Recettes secrètes</h3>
+  <div class="rec2" id="recipes"></div>
+  <div class="row">
+    <button class="btn p" id="btnHelpClose">🔧 Je retourne bricoler</button>
+  </div>
+</div></div>
+
+<script>
+(function(){
+'use strict';
+
+/* ==========================================================
+   1. PETITS OUTILS
+   ========================================================== */
+function $(id){ return document.getElementById(id); }
+function clamp(v,a,b){ return v<a?a:(v>b?b:v); }
+function lerp(a,b,t){ return a+(b-a)*t; }
+function rnd(a,b){ return a+Math.random()*(b-a); }
+function pick(list){ return list[Math.floor(Math.random()*list.length)]; }
+function byId(list,id){ for(var i=0;i<list.length;i++){ if(list[i].id===id) return list[i]; } return null; }
+function hashStr(s){ var acc=2166136261; for(var i=0;i<s.length;i++){ acc^=s.charCodeAt(i); acc=(acc*16777619)>>>0; } return acc; }
+function fracOf(s){ return (hashStr(s)%10000)/10000; }
+function h1(i){ var x=Math.sin(i*127.1+11.7)*43758.5453; return x-Math.floor(x); }
+/* nombre avec séparateur de milliers français */
+function nf(n){
+  var neg=n<0, s=String(Math.round(Math.abs(n))), out='', c=0;
+  for(var i=s.length-1;i>=0;i--){ out=s.charAt(i)+out; c++; if(c%3===0 && i>0) out=' '+out; }
+  return (neg?'-':'')+out;
+}
+function fmtDist(m){ return m>=1000 ? (m/1000).toFixed(2).replace('.',',')+' km' : nf(m)+' m'; }
+function num1(v){ return v.toFixed(1).replace('.',','); }
+
+/* ---------- constructeur DOM : le jeu ne construit jamais de chaîne HTML ---------- */
+function h(tag,attrs,kids){
+  var el=document.createElement(tag);
+  if(attrs){ for(var k in attrs){ var val=attrs[k];
+    if(val===null || val===undefined || val===false) continue;
+    if(k==='class') el.className=val;
+    else if(k==='text') el.textContent=val;
+    else el.setAttribute(k,val);
+  } }
+  add(el,kids);
+  return el;
+}
+function add(el,kids){
+  if(kids===null || kids===undefined) return;
+  if(Object.prototype.toString.call(kids)==='[object Array]'){ for(var i=0;i<kids.length;i++) add(el,kids[i]); return; }
+  el.appendChild((typeof kids==='string' || typeof kids==='number') ? document.createTextNode(String(kids)) : kids);
+}
+function fill(el,kids){ while(el.firstChild) el.removeChild(el.firstChild); add(el,kids); }
+function leaves(eco){
+  var n=Math.round(clamp(eco,0,10)/2), s='';
+  for(var i=0;i<5;i++) s+= i<n?'🌱':'·';
+  return s;
+}
+
+/* ==========================================================
+   2. LE MATÉRIEL (à modifier librement ici !)
+   E = énergie, A = autonomie, R = risque, eco = 0..10
+   ========================================================== */
+var SOURCES = [
+ {id:'essence',nom:'Essence',emoji:'⛽',E:8,A:7,R:3,eco:1,color:'#f5b02e',fx:'flame',best:['pistons','turbine'],
+  fact:'Un litre d’essence fait rouler une voiture environ 12 km. Ça vient du pétrole, une réserve limitée.'},
+ {id:'diesel',nom:'Gasoil',emoji:'🛢️',E:9,A:8,R:2,eco:0,color:'#8d949e',fx:'smoke',best:['pistons','vapeurbloc'],
+  fact:'Le diesel donne beaucoup de force pour tirer lourd, mais il crache pas mal de fumée et de particules.'},
+ {id:'batterie',nom:'Batterie',emoji:'🔋',E:6,A:5,R:1,eco:8,color:'#2ee6a8',fx:'spark',best:['electrique'],
+  fact:'Zéro émission à l’échappement. Mais il faut recharger quelque part, et la batterie est lourde.'},
+ {id:'solaire',nom:'Solaire',emoji:'☀️',E:3,A:9,R:0,eco:10,color:'#ffd23f',fx:'sun',best:['electrique','enchante'],
+  fact:'Le soleil envoie environ 1000 watts par mètre carré. Sur une voiture, il n’y a pas assez de place pour le capter.'},
+ {id:'eolien',nom:'Éolienne',emoji:'🌀',E:4,A:8,R:2,eco:10,color:'#a8e6ff',fx:'wind',best:['elica','turbine'],
+  fact:'Une grande éolienne produit assez pour des centaines de maisons. Sur une voiture, il faut déjà que le vent souffle.'},
+ {id:'vapeur',nom:'Vapeur',emoji:'♨️',E:6,A:6,R:4,eco:3,color:'#cfe8f5',fx:'steam',best:['vapeurbloc'],
+  fact:'La machine à vapeur a lancé les chemins de fer en 1804. Inconvénient : il faut bouillir avant de partir.'},
+ {id:'hydro',nom:'Barrage',emoji:'💧',E:5,A:4,R:2,eco:9,color:'#3fb9ff',fx:'water',best:['turbine','electrique'],
+  fact:'L’eau qui tombe fait tourner une turbine. C’est la première source d’électricité de nombreux pays.'},
+ {id:'hydrogene',nom:'Hydrogène',emoji:'⚗️',E:7,A:8,R:3,eco:7,color:'#9fe8ff',fx:'water',best:['electrique','turbine','fusee'],
+  fact:'La pile à combustible mélange hydrogène et oxygène et rejette… de l’eau. Mais fabriquer l’hydrogène coûte cher.'},
+ {id:'nucleaire',nom:'Nucléaire',emoji:'⚛️',E:10,A:10,R:6,eco:6,color:'#7dff9b',fx:'glow',best:['turbine'],
+  fact:'1 kg d’uranium contient l’énergie de 3000 tonnes de charbon. Ça ne fume pas, mais ça laisse des déchets radioactifs.'},
+ {id:'bio',nom:'Bio-carburant',emoji:'🌽',E:5,A:6,R:1,eco:6,color:'#b7e04a',fx:'leaf',best:['pistons'],
+  fact:'Fabriqué avec du maïs, de la betterave ou de l’huile usagée. Ça sent la friterie au feu rouge.'},
+ {id:'charbon',nom:'Charbon',emoji:'🔥',E:8,A:8,R:3,eco:0,color:'#ff8a3d',fx:'smoke',best:['vapeurbloc'],
+  fact:'Le carburant de la révolution industrielle. Beaucoup d’énergie, et un beau nuage noir gratuit.'},
+ {id:'soda',nom:'Soda-Mentos',emoji:'🥤',E:7,A:2,R:7,eco:4,color:'#cffff0',fx:'geyser',best:['vapeurbloc','fusee'],
+  fact:'Le gaz fondu sort d’un coup et projette la bouteille. Spectaculaire… pendant trois secondes.'},
+ {id:'hamster',nom:'Hamster',emoji:'🐹',E:2,A:4,R:1,eco:8,color:'#ffc978',fx:'fur',best:['velo'],
+  fact:'Un hamster court jusqu’à 9 km par nuit dans sa roue. Pour une voiture, il en faudrait des centaines.'},
+ {id:'chocolat',nom:'Chocolat',emoji:'🍫',E:4,A:3,R:2,eco:5,color:'#a4643a',fx:'choco',best:['vapeurbloc'],
+  fact:'Le cacao cale un humain, mais fond à 35 °C : en été, le moteur se transforme en pâte à tartiner.'},
+ {id:'chat',nom:'Chat énervé',emoji:'🐈',E:6,A:3,R:6,eco:7,color:'#ff9d5c',fx:'fur',best:['velo','mystere'],
+  fact:'Sept vies, donc sept départs. Puissance très variable selon l’heure de la sieste.'},
+ {id:'licorne',nom:'Licorne',emoji:'🦄',E:8,A:7,R:4,eco:10,color:'#ff6ec7',fx:'rainbow',best:['enchante','fusee'],
+  fact:'Carburant 100 % imaginaire : aucune émission, uniquement des paillettes.'},
+ {id:'fromage',nom:'Fromage qui pue',emoji:'🧀',E:3,A:5,R:5,eco:4,color:'#e0c93f',fx:'stink',best:['turbine','vapeurbloc'],
+  fact:'Le méthane d’un tas de fromage peut faire tourner une turbine. Les stations-service refusent le client.'},
+ {id:'popcorn',nom:'Popcorn',emoji:'🍿',E:4,A:2,R:5,eco:5,color:'#ffe27a',fx:'pop',best:['fusee','vapeurbloc'],
+  fact:'Un grain de maïs qui explose, c’est un mini-propulseur de cuisine. Attention aux oreilles.'},
+ {id:'lune',nom:'Rayon lunaire',emoji:'🌙',E:3,A:8,R:2,eco:10,color:'#b9c6ff',fx:'night',best:['enchante','electrique'],
+  fact:'La Lune ne fait que réfléchir le soleil : à peine 0,001 watt par mètre carré. Il faudrait un miroir de 10 km.'},
+ {id:'colere',nom:'Colère',emoji:'😤',E:7,A:2,R:5,eco:8,color:'#ff6b6b',fx:'storm',best:['pistons','fusee'],
+  fact:'L’énergie du « là, je vais y arriver ! ». Très puissante, durée de vie : quatre minutes.'},
+ {id:'cafeine',nom:'Café serré',emoji:'☕',E:5,A:3,R:4,eco:7,color:'#c98b52',fx:'coffee',best:['pistons'],
+  fact:'Le moteur le plus nerveux du lundi matin. Interdit de redémarrer après 18 h.'},
+ {id:'rock',nom:'Rock’n’roll',emoji:'🎸',E:5,A:5,R:3,eco:9,color:'#ff4fa3',fx:'music',best:['electrique','mystere'],
+  fact:'Un concert entier produit assez de son pour allumer quelques ampoules. L’enthousiasme, lui, est gratuit.'},
+ {id:'antimatiere',nom:'Anti-matière',emoji:'🕳️',E:12,A:10,R:10,eco:5,color:'#8a5cff',fx:'void',best:['fusee','mystere'],
+  fact:'1 gramme d’anti-matière + 1 gramme de matière = l’énergie de 430 tonnes de TNT. À manipuler avec précaution.'},
+ {id:'temps',nom:'Vortex temporel',emoji:'⏳',E:9,A:9,R:8,eco:3,color:'#00ffc8',fx:'glitch',best:['mystere','enchante'],
+  fact:'La voiture arrive avant d’être partie. Interdit par trois lois de la physique, dont une inventée.'}
+];
+
+var MOTORS = [
+ {id:'pistons',nom:'Moteur à pistons',emoji:'⚙️',rend:1.0,couple:1.0,stab:1.0,auto:1.0,
+  fact:'Quatre temps : admission, compression, explosion, échappement. Jusqu’à 3000 explosions par minute !'},
+ {id:'electrique',nom:'Moteur électrique',emoji:'🔌',rend:1.35,couple:1.3,stab:1.15,auto:0.95,
+  fact:'About 90 % de l’énergie part dans les roues, contre seulement 30 % pour un moteur à essence.'},
+ {id:'turbine',nom:'Turbine à gaz',emoji:'🌀',rend:1.2,couple:0.9,stab:0.85,auto:0.8,
+  fact:'Un flux d’air continu au lieu d’explosions : très puissant, très lisse, et terriblement bruyant.'},
+ {id:'fusee',nom:'Moteur-fusée',emoji:'🚀',rend:1.55,couple:1.4,stab:0.5,auto:0.45,vol:true,
+  fact:'Il emporte son propre oxygène, donc il fonctionnerait même dans l’espace. Et il décolle.'},
+ {id:'vapeurbloc',nom:'Machine à vapeur',emoji:'🔩',rend:0.65,couple:1.5,stab:1.25,auto:1.1,
+  fact:'Énormément de force pour démarrer, une vitesse de grand-père ensuite. Et une chaudière à nourrir.'},
+ {id:'velo',nom:'Pédalier-chaîne',emoji:'🚲',rend:0.9,couple:0.8,stab:1.3,auto:1.2,
+  fact:'Le meilleur rendement du monde : 99 % de l’énergie arrive dans la chaîne. C’est toi qui pagaies.'},
+ {id:'elica',nom:'Hélice d’avion',emoji:'✈️',rend:0.95,couple:1.0,stab:0.8,auto:0.85,vol:true,
+  fact:'Elle tire l’air vers l’arrière. Très efficace, mais une hélice dans les garages, ça ne pardonne pas.'},
+ {id:'enchante',nom:'Moteur enchanté',emoji:'✨',rend:1.1,couple:1.1,stab:0.9,auto:1.0,
+  fact:'Il fonctionne à la conviction profonde. Marcherait 100 % du temps si on n’essayait pas de comprendre.'},
+ {id:'mystere',nom:'Moteur mystère',emoji:'❔',rend:1.2,couple:1.1,stab:0.55,auto:0.9,
+  fact:'Personne ne sait comment il marche, y compris lui. Le résultat est garanti, jamais le même…'}
+];
+
+var GADGETS = [
+ {id:'turbo',nom:'Turbo',emoji:'💨',mods:{pu:1.25,risque:1.15},
+  fact:'Le turbocompresseur recycle les gaz d’échappement pour pousser plus d’air dans le moteur.'},
+ {id:'nitro',nom:'Nitro',emoji:'🧪',mods:{pu:1.6,risque:1.7},
+  fact:'Du protoxyde d’azote : plus d’oxygène, donc des explosions plus fortes. Et une température d’enfer.'},
+ {id:'aileron',nom:'Aileron',emoji:'✈️',mods:{stab:0.6,risque:0.85,vitesse:14},
+  fact:'Comme une aile d’avion à l’envers : il plaque la voiture au sol pour tenir à grande vitesse.'},
+ {id:'panneau',nom:'Panneau solaire',emoji:'🔆',mods:{auto:1.5,pu:1.05,eco:1.6},
+  fact:'Un toit solaire ajoute quelques kilomètres par jour. Suffisant pour un robot de cuisine, pas pour une RS.'},
+ {id:'ballons',nom:'Ballons d’hélium',emoji:'🎈',mods:{pu:0.9,auto:1.2,risque:1.3,vol:true},
+  fact:'1 mètre cube d’hélium soulève 1 kg. Pour une voiture de 1000 kg : 1000 ballons géants.'},
+ {id:'petitesroues',nom:'Petites roues',emoji:'🚲',mods:{auto:1.3,pu:0.92,eco:0.6},
+  fact:'Des roues fines et légères frottent moins : on roule plus loin avec la même énergie.'},
+ {id:'couronne',nom:'Volant doré',emoji:'👑',mods:{pu:1.2,risque:1.1,auto:0.95},
+  fact:'+15 % de puissance, mesurés en pure arrogance. L’aérodynamique de l’ego n’a jamais été prouvée.'},
+ {id:'glace',nom:'Glace pilée',emoji:'🧊',mods:{risque:0.5,pu:0.96,stab:0.4},
+  fact:'Un moteur qui chauffe perd de la puissance et peut casser. Refroidir, c’est déjà gagner.'},
+ {id:'feux',nom:'Feux d’artifice',emoji:'🎇',mods:{pu:1.35,auto:0.7,risque:2.2},
+  fact:'Propulsion par pétards : époustouflant sur 40 mètres, inutilisable ensuite, et les voisins détestent.'},
+ {id:'frein',nom:'Frein à main serré',emoji:'🛑',mods:{pu:0.45,risque:0.4},
+  fact:'L’expérience qui prouve le frottement : la moitié de la puissance part en chaleur et en fumée.'},
+ {id:'aimant',nom:'Aimant géant',emoji:'🧲',mods:{pu:1.1,auto:1.1,risque:1.2},
+  fact:'Il attire les boîtes de conserve et les plaques d’égout. Les voitures des autres, un peu moins.'},
+ {id:'lest',nom:'Contre-poids',emoji:'🏋️',mods:{auto:1.35,pu:0.9,stab:0.5},
+  fact:'Lester une voiture la rend stable et lui donne de l’adhérence… au prix de la consommation.'}
+];
+
+/* effets visuels par source */
+var FXS = {
+ flame:{e:['🔥','💨','🔥'],c:'#ff8a1e',sky:['#2a1a10','#65341a']},
+ smoke:{e:['💨','🌫️','💨'],c:'#8b95a3',sky:['#1c222b','#414c5b']},
+ spark:{e:['⚡','✨','⚡'],c:'#3ff0b0',sky:['#08201c','#12604a']},
+ sun:{e:['✨','🌤️','✨'],c:'#ffd23f',sky:['#2b3350','#f0a83c'],decor:['🌻','🌳','🏠','🌾']},
+ wind:{e:['💨','🍃','💨'],c:'#a8e6ff',sky:['#26405e','#8fc7e8'],decor:['🌳','🐑','🚦','🌾']},
+ steam:{e:['♨️','💨','♨️'],c:'#dceef7',sky:['#243040','#61798f']},
+ water:{e:['💧','🌊','💧'],c:'#3fb9ff',sky:['#123049','#3f9fd6'],decor:['🌳','🐄','🏠','🌾']},
+ glow:{e:['✨','☢️','✨'],c:'#7dff9b',sky:['#0e2a1c','#2f7a4a']},
+ leaf:{e:['🍃','🌽','🍃'],c:'#b7e04a',sky:['#1e2c14','#6e8f2f'],decor:['🌽','🌻','🚜','🌳']},
+ choco:{e:['🍫','🥛','🍫'],c:'#a4643a',sky:['#2a1a12','#6b4227'],decor:['🍫','🌳','🏠','🍫']},
+ geyser:{e:['🥤','💦','🫧'],c:'#cffff0',sky:['#123338','#4fb7b0']},
+ fur:{e:['🐾','💨','🐾'],c:'#ffc978',sky:['#2d2318','#8a6234'],decor:['🐑','🌳','🏠','🌻']},
+ rainbow:{e:['🌈','✨','💖'],c:'#ff6ec7',sky:['#3b2159','#ff8ac4'],decor:['🌈','🎪','🦄','🌈']},
+ stink:{e:['🧀','💨','🤢'],c:'#e0c93f',sky:['#2c2a10','#8b7d24'],decor:['🧀','🐄','🏠','🧀']},
+ void:{e:['🕳️','✨','🌑'],c:'#8a5cff',sky:['#0a0518','#3a1170'],decor:['🪐','☄️','🌑','🛸'],stars:true},
+ pop:{e:['🍿','🔥','🍿'],c:'#ffe27a',sky:['#2e2415','#b98a2c'],decor:['🍿','🌽','🏠','🍿']},
+ night:{e:['🌙','✨','⭐'],c:'#b9c6ff',sky:['#060a1e','#243364'],decor:['🌙','🌲','🏠','🌲'],stars:true},
+ storm:{e:['💢','⚡','💨'],c:'#ff6b6b',sky:['#2a1220','#8c2f3c']},
+ coffee:{e:['☕','💨','☕'],c:'#c98b52',sky:['#241a14','#7a5233'],decor:['☕','🏠','🌳','☕']},
+ music:{e:['🎵','🎸','🎶'],c:'#ff4fa3',sky:['#2a1030','#8e2a6b'],decor:['🎸','🎪','🎵','🏠']},
+ glitch:{e:['⏳','⌛','❗'],c:'#00ffc8',sky:['#04231f','#0f7f6d'],decor:['⏳','🕰️','🏠','⏳']},
+ dust:{e:['💨','🌫️'],c:'#d8c9a8',sky:['#2a2419','#7a6a45']}
+};
+
+/* recettes secrètes : src / mot / gad = listes ou null (n’importe quoi) */
+var COMBOS = [
+ {id:'duo_essence',nom:'Duo classique',src:['essence'],mot:['pistons'],gad:null,mods:{pu:1.2},
+  tex:'Essence + pistons : 130 ans de mécanique éprouvée. Rien d’original, mais ça démarre.'},
+ {id:'duo_elec',nom:'Voiture électrique',src:['batterie'],mot:['electrique'],gad:null,mods:{pu:1.35,risque:0.7},
+  tex:'La batterie et le moteur électrique sont faits l’un pour l’autre : couple immédiat et zéro fumée.'},
+ {id:'geyser',nom:'Geyser express',src:['soda'],mot:['vapeurbloc'],gad:null,mods:{pu:1.5,auto:1.4},
+  tex:'Soda-Mentos dans une chaudière : ça mousse, ça déborde, ça avance.'},
+ {id:'hamsterbile',nom:'Hamster-mobile',src:['hamster'],mot:['velo'],gad:null,mods:{pu:1.35,auto:1.8,risque:0.6},
+  tex:'Le hamster pédale à ta place. Équitable ? Il négocie des graines à vie.'},
+ {id:'centrale',nom:'Centrale glacée',src:['nucleaire'],mot:['turbine'],gad:['glace'],mods:{pu:1.3,risque:0.4},
+  tex:'Un réacteur a besoin d’eau froide : la glace pilée évite la surchauffe. Vraie physique, ça.'},
+ {id:'imperatrice',nom:'Impératrice pailletée',src:['licorne'],mot:['enchante'],gad:null,mods:{pu:1.7,eco:2},fx:'rainbow',
+  tex:'La magie et la licorne ne font qu’une. La piste elle-même devient arc-en-ciel.'},
+ {id:'furicorne',nom:'Licorne fusée',src:['licorne'],mot:['fusee'],gad:null,mods:{pu:1.5},fx:'rainbow',
+  tex:'Une licorne dans une fusée : ça vole, et ça brille plus fort que le soleil.'},
+ {id:'trounoir',nom:'Trou noir portatif',src:['antimatiere'],mot:['mystere'],gad:null,mods:{pu:2.2,risque:1.6},fx:'void',
+  tex:'Annihilation matière-antimatière. Les assurances n’ont pas prévu cette case.'},
+ {id:'surchARGE',nom:'SurchARGE solaire',src:['solaire'],mot:['electrique'],gad:['panneau'],mods:{pu:2.0,auto:1.6,eco:2},
+  tex:'Pour une fois, le solaire a la pêche. Ce n’est clairement pas prévu par le soleil.'},
+ {id:'clairdelune',nom:'Clair de lune',src:['lune'],mot:['enchante'],gad:null,mods:{auto:2.0,pu:1.15},fx:'night',
+  tex:'Nourrie au reflet de la Lune, la voiture roule la nuit sans jamais chauffer.'},
+ {id:'locomobile',nom:'Locomotive de 1804',src:['charbon'],mot:['vapeurbloc'],gad:null,mods:{pu:1.35,auto:1.4,risque:0.8},
+  tex:'Charbon + machine à vapeur : tu viens de réinventer la première locomotive du monde.'},
+ {id:'memechose',nom:'À peu près la même chose',src:['eolien'],mot:['elica'],gad:null,mods:{pu:0.55,auto:1.2},
+  tex:'Une éolienne qui fait tourner une hélice : deux machines à remuer le même air. Gagné : ça n’avance pas.'},
+ {id:'tempetale',nom:'Tempêtale',src:['colere'],mot:['fusee'],gad:null,mods:{pu:1.7,risque:1.5},
+  tex:'La colère d’un enfant de 11 ans + un moteur-fusée. Mets un casque.'},
+ {id:'paradoxe',nom:'Paradoxe du frein à main',src:['temps'],mot:['mystere'],gad:['frein'],mods:{pu:1.4,auto:2.4},fx:'glitch',
+  tex:'Tu freines dans le temps : la voiture est arrivée avant le départ. Les profs vont adorer.'},
+ {id:'fonduevolante',nom:'Fondue volante',src:['fromage'],mot:['fusee'],gad:null,mods:{pu:1.4},fx:'stink',
+  tex:'Le fromage fondu propulsé dans la stratosphère. L’odeur se verra de la Lune.'},
+ {id:'cafedefuse',nom:'Triple espresso',src:['cafeine'],mot:['pistons'],gad:['turbo'],mods:{pu:1.5,auto:0.85,risque:1.3},
+  tex:'Café + turbo : le moteur tremble, tape du pied et n’a pas dormi depuis mardi.'},
+ {id:'pilecomb',nom:'Pile à combustible',src:['hydrogene'],mot:['electrique'],gad:null,mods:{pu:1.35,eco:3,risque:0.75},
+  tex:'Hydrogène + moteur électrique : de l’eau pure à l’échappement. Le café en moins.'},
+ {id:'rocket',nom:'Rock et décollage',src:['rock'],mot:['fusee'],gad:null,mods:{pu:1.55,risque:1.3},fx:'music',
+  tex:'Le volume sonore devient le carburant. Décibels mesurés : beaucoup trop.'},
+ {id:'chocolatine',nom:'Chocolatine',src:['chocolat'],mot:['vapeurbloc'],gad:null,mods:{pu:1.3,auto:1.3},fx:'choco',
+  tex:'Le chocolat fond dans la chaudière. Délicieux, catastrophique pour le joint de culasse.'},
+ {id:'popfus',nom:'Pop-corn-fusée',src:['popcorn'],mot:['fusee'],gad:['nitro'],mods:{pu:1.8,risque:2.0},
+  tex:'Du maïs, du nitro et une fusée. Le cinéma maison le plus cher de l’histoire.'},
+ {id:'zen',nom:'Hamster zen',src:['hamster'],mot:['enchante'],gad:['glace'],mods:{auto:2.4,risque:0.4},
+  tex:'Un hamster au frais, sur un moteur enchanté : il médite, et la voiture le suit.'},
+ {id:'velosoleil',nom:'Vélo solaire',src:['solaire'],mot:['velo'],gad:['petitesroues'],mods:{auto:2.6,eco:3},
+  tex:'Solaire + pédalier + roues fines : l’autonomie d’un insecte, la pollution d’un caillou.'},
+ {id:'aimanfusee',nom:'Aimant cosmique',src:['antimatiere'],mot:['fusee'],gad:['aimant'],mods:{pu:1.8,auto:1.3},fx:'void',
+  tex:'Un aimant près de l’anti-matière : la voiture attire la moitié de la ferraille de la ville.'},
+ {id:'chatdor',nom:'Chat couronné',src:['chat'],mot:['velo'],gad:['couronne'],mods:{pu:1.4,auto:1.4},
+  tex:'Un chat sur un vélo avec une couronne : le roi des toits, version pédale.'},
+ {id:'lestage',nom:'Blindage de glace',src:['nucleaire'],mot:['vapeurbloc'],gad:['glace'],mods:{pu:1.25,risque:0.35},
+  tex:'Un réacteur, une chaudière et des seaux de glace. Personne n’a froid, tout le monde est prudent.'},
+ {id:'biodiesel',nom:'Friterie ambulante',src:['bio'],mot:['pistons'],gad:['lest'],mods:{pu:1.25,auto:1.2},
+  tex:'Du maïs, des pistons et du lest : le camion de la kermesse, écolo sur les bords.'}
+];
+
+var DECOR = ['🌳','🌲','🏠','🚦','🐑','🌾','⛰️','🌻','🚜','🐄','🏭','🎪'];
+var REFS = [
+ {n:'voitures garées',m:4.5},{n:'bus scolaires',m:11},{n:'baignoires',m:1.7},
+ {n:'paires de girafes couchées',m:5.2},{n:'longueurs de baleine à bosse',m:15},
+ {n:'filets de ping-pong',m:2.74},{n:'pistes de bowling',m:19},{n:'tours Eiffel allongées',m:330},
+ {n:'longueurs de terrain de foot',m:105},{n:'passages piétonniers',m:5}
+];
+
+var CAR = { w:264, h:104, len:4.4,
+  body:'M10,90 L10,66 Q10,58 20,56 L58,52 L84,24 Q90,16 102,16 L164,16 Q176,16 183,25 L201,47 L242,55 Q254,58 254,70 L254,90 Z',
+  glass:'M101,25 L161,25 L176,45 L88,45 Z',
+  wheels:[{x:74,y:86,r:18},{x:196,y:86,r:18}]
+};
+var SLOT_DEF = [
+ {type:'src',nom:'ÉNERGIE',x:226,y:40},
+ {type:'mot',nom:'MOTEUR',x:118,y:70},
+ {type:'gad',nom:'ÉQUIPEMENT',x:132,y:-6}
+];
+var TABS = [{k:'src',nom:'⚡ Énergie'},{k:'mot',nom:'⚙️ Moteur'},{k:'gad',nom:'🎁 Équipement'}];
+var RUN_MAX = 9.5;
+
+/* ==========================================================
+   3. CALCUL DES PERFORMANCES (fonction pure)
+   ========================================================== */
+function comboMatch(c,sel){
+  if(c.src && c.src.indexOf(sel.src)<0) return false;
+  if(c.mot && c.mot.indexOf(sel.mot)<0) return false;
+  if(c.gad && c.gad.indexOf(sel.gad)<0) return false;
+  return true;
+}
+function scoreBuild(sel){
+  var src = byId(SOURCES, sel.src);
+  var mot = byId(MOTORS, sel.mot) || byId(MOTORS,'pistons');
+  var gad = sel.gad ? byId(GADGETS, sel.gad) : null;
+  var g = {pu:1,auto:1,risque:1,stab:0,eco:0,vitesse:0,vol:false};
+  if(gad && gad.mods){ for(var k in gad.mods){ g[k]=gad.mods[k]; } }
+
+  var combos=[], mpu=1, mauto=1, mrisque=1, mstab=0, meco=0, vol=g.vol, fx=null, sky=null, decor=null;
+  for(var i=0;i<COMBOS.length;i++){
+    var c=COMBOS[i];
+    if(!comboMatch(c,sel)) continue;
+    combos.push(c);
+    var m=c.mods||{};
+    mpu*= (m.pu||1); mauto*= (m.auto||1); mrisque*= (m.risque||1);
+    mstab+= (m.stab||0); meco+= (m.eco||0);
+    if(m.vol) vol=true;
+    if(c.fx){ var cf=FXS[c.fx]; if(cf){ fx=c.fx; sky=cf.sky; decor=cf.decor||null; } }
+  }
+
+  var compat = (src.best && src.best.indexOf(mot.id)>=0) ? 1.15 : 1;
+  var mystere = (mot.id==='mystere') ? 0.75 + fracOf(src.id+mot.id+(sel.gad||'x'))*0.7 : 1;
+
+  var pu = Math.max(4, src.E*14*mot.rend*g.pu*mpu*compat*mystere);
+  var kmh = 22 + Math.pow(pu,0.72)*4.2*(0.8+mot.couple*0.25) + g.vitesse + mstab*16;
+  if(vol) kmh *= 1.2;
+  var portee = src.A*95*mot.auto*g.auto*mauto;
+  var risk = src.R*6.2*(1.5-mot.stab)*g.risque*mrisque - (g.stab+mstab)*6;
+  if(mot.id==='mystere') risk += 8;
+  risk = clamp(risk,1,96);
+  var eco = clamp(src.eco*0.55 + mot.rend*2.2 + g.eco + meco, 0, 10);
+
+  var base = FXS[src.fx] || FXS.dust;
+  var build = {
+    src:src, mot:mot, gad:gad, compat:compat>1, vol:vol,
+    pu:Math.round(pu), kmh:Math.round(kmh), portee:Math.round(portee),
+    risk:Math.round(risk), eco:eco, combos:combos,
+    fx: fx||src.fx, sky: sky||base.sky, decor: decor||base.decor||DECOR,
+    color: src.color,
+    topMps: kmh/3.6
+  };
+  build.leaves = Math.round(eco/2);
+  build.note = clamp(pu/9 + kmh/34 + portee/160 + eco*1.5 - risk*0.4, 0, 10);
+  var v = verdict(build); build.titre=v.t; build.phrase=v.p;
+  build.ecoMot = ecoNote(eco);
+  return build;
+}
+function verdict(b){
+  var k=b.kmh;
+  if(k<55) return {t:'Escargonade motorisée',p:'Ça roule. Peu, mais ça roule.'};
+  if(k<105) return {t:'Tortue turbo',p:'Parfait pour aller chercher le pain en tournant deux fois.'};
+  if(k<165) return {t:'Berline de cour de récré',p:'Ça commence à envoyer sérieusement du bois.'};
+  if(k<260) return {t:'Fusée de poche',p:'Accroche ton cartable, ça pousse !'};
+  if(k<430) return {t:'Sonic du dimanche',p:'Le vent pleure quand tu passes devant lui.'};
+  if(k<800) return {t:'IL FAUT DES FREINS',p:'Ici, le klaxon sert d’avertissement aux nuages.'};
+  return {t:'Mach plus quelque chose',p:'Les lois de la physique viennent de déposer une plainte.'};
+}
+function ecoNote(e){
+  if(e>=8.5) return 'Empreinte 🌍 minuscule : bravo !';
+  if(e>=6) return 'Empreinte 🌍 plutôt propre.';
+  if(e>=3.5) return 'Empreinte 🌍 : ça fume un peu.';
+  if(e>=1.5) return 'Empreinte 🌍 : nuage noir garanti.';
+  return 'Empreinte 🌍 : les arbres t’en veulent.';
+}
+function conversion(m){
+  var best=null;
+  for(var i=0;i<REFS.length;i++){
+    var n=m/REFS[i].m;
+    if(n>=3 && n<=400){ if(!best || Math.abs(Math.log10(n/30))<Math.abs(Math.log10(best.n/30))) best={n:n,ref:REFS[i]}; }
+  }
+  if(!best){ var f=m/REFS[0].m; return 'soit environ '+nf(f)+' '+REFS[0].n; }
+  return 'soit environ '+nf(best.n)+' '+best.ref.n;
+}
+
+/* ==========================================================
+   4. ÉTAT + SAUVEGARDE
+   ========================================================== */
+var store = { best:0, found:{}, muted:false };
+function loadStore(){
+  try{
+    var raw = localStorage.getItem('moteurFou.v1');
+    if(raw){ var o=JSON.parse(raw); if(o && typeof o==='object'){ store.best=o.best||0; store.found=o.found||{}; store.muted=!!o.muted; } }
+  }catch(e){}
+}
+function saveStore(){ try{ localStorage.setItem('moteurFou.v1', JSON.stringify(store)); }catch(e){} }
+
+var state = { src:null, mot:null, gad:null, tab:'src', nudges:{} };
+function buildFromState(){ return state.src ? scoreBuild(state) : null; }
+
+/* ==========================================================
+   5. SON (synthèse, aucune dépendance)
+   ========================================================== */
+var Sound = {
+  ctx:null, master:null, oscA:null, oscB:null, gain:null, filt:null, nsrc:null, ngain:null, noiseBuf:null, started:false,
+  init:function(){
+    if(this.ctx) return;
+    try{
+      var AC = window.AudioContext || window.webkitAudioContext;
+      if(!AC) return;
+      this.ctx = new AC();
+      this.master = this.ctx.createGain();
+      this.master.gain.value = store.muted?0:0.38;
+      this.master.connect(this.ctx.destination);
+    }catch(e){ this.ctx=null; }
+  },
+  wake:function(){ this.init(); if(this.ctx && this.ctx.state==='suspended'){ try{ this.ctx.resume(); }catch(e){} } },
+  setOn:function(v){ store.muted=!v; if(this.master) this.master.gain.value = v?0.38:0; saveStore(); },
+  noise:function(){
+    if(this.noiseBuf) return this.noiseBuf;
+    var n=Math.floor(this.ctx.sampleRate*1.5), b=this.ctx.createBuffer(1,n,this.ctx.sampleRate), d=b.getChannelData(0);
+    for(var i=0;i<n;i++) d[i]=Math.random()*2-1;
+    this.noiseBuf=b; return b;
+  },
+  blip:function(f,dur,type,vol){
+    if(!this.ctx) return;
+    try{
+      var t=this.ctx.currentTime, o=this.ctx.createOscillator(), g=this.ctx.createGain();
+      o.type=type||'square'; o.frequency.setValueAtTime(f,t);
+      g.gain.setValueAtTime(0.0001,t);
+      g.gain.exponentialRampToValueAtTime(vol||0.22,t+0.012);
+      g.gain.exponentialRampToValueAtTime(0.0001,t+(dur||0.12));
+      o.connect(g); g.connect(this.master); o.start(t); o.stop(t+(dur||0.12)+0.06);
+    }catch(e){}
+  },
+  place:function(){ this.blip(480,0.08,'square',0.18); var s=this; setTimeout(function(){ s.blip(760,0.09,'square',0.14); },55); },
+  nope:function(){ this.blip(170,0.14,'sawtooth',0.2); },
+  chime:function(){ var s=this; [660,880,1100,1480].forEach(function(f,i){ setTimeout(function(){ s.blip(f,0.18,'triangle',0.15); }, i*70); }); },
+  boom:function(){
+    if(!this.ctx) return;
+    try{
+      var t=this.ctx.currentTime, s=this.ctx.createBufferSource(); s.buffer=this.noise();
+      var f=this.ctx.createBiquadFilter(); f.type='lowpass'; f.frequency.setValueAtTime(2400,t); f.frequency.exponentialRampToValueAtTime(90,t+0.7);
+      var g=this.ctx.createGain(); g.gain.setValueAtTime(0.7,t); g.gain.exponentialRampToValueAtTime(0.0005,t+0.9);
+      s.connect(f); f.connect(g); g.connect(this.master); s.start(t); s.stop(t+1);
+    }catch(e){}
+  },
+  engineStart:function(pu){
+    if(!this.ctx || this.started) return;
+    try{
+      var t=this.ctx.currentTime;
+      this.filt=this.ctx.createBiquadFilter(); this.filt.type='lowpass'; this.filt.frequency.value=520;
+      this.gain=this.ctx.createGain(); this.gain.gain.setValueAtTime(0.0001,t); this.gain.gain.exponentialRampToValueAtTime(0.16,t+0.3);
+      this.oscA=this.ctx.createOscillator(); this.oscA.type='sawtooth'; this.oscA.frequency.value=48;
+      this.oscB=this.ctx.createOscillator(); this.oscB.type='square'; this.oscB.frequency.value=24;
+      var gb=this.ctx.createGain(); gb.gain.value=0.35;
+      this.oscA.connect(this.filt); this.oscB.connect(gb); gb.connect(this.filt);
+      this.filt.connect(this.gain); this.gain.connect(this.master);
+      this.oscA.start(t); this.oscB.start(t);
+      var n=this.ctx.createBufferSource(); n.buffer=this.noise(); n.loop=true;
+      this.ngain=this.ctx.createGain(); this.ngain.gain.value=0.05;
+      n.connect(this.ngain); this.ngain.connect(this.master); n.start(t);
+      this.nsrc=n; this.started=true;
+    }catch(e){}
+  },
+  engineSet:function(vNorm,pu){
+    if(!this.started || !this.ctx) return;
+    try{
+      var t=this.ctx.currentTime, base=42+clamp(vNorm,0,1)*150+clamp(pu,0,600)*0.12;
+      this.oscA.frequency.setTargetAtTime(base,t,0.08);
+      this.oscB.frequency.setTargetAtTime(base*0.5,t,0.08);
+      this.filt.frequency.setTargetAtTime(420+clamp(vNorm,0,1)*2200,t,0.1);
+      if(this.ngain) this.ngain.gain.setTargetAtTime(0.03+clamp(vNorm,0,1)*0.09,t,0.15);
+    }catch(e){}
+  },
+  engineStop:function(){
+    if(!this.started || !this.ctx) return;
+    try{
+      var t=this.ctx.currentTime;
+      this.gain.gain.cancelScheduledValues(t); this.gain.gain.setValueAtTime(this.gain.gain.value,t);
+      this.gain.gain.exponentialRampToValueAtTime(0.0002,t+0.45);
+      var a=this.oscA,b=this.oscB,n=this.nsrc;
+      setTimeout(function(){ try{ a.stop(); b.stop(); n.stop(); }catch(e){} },600);
+      this.started=false; this.oscA=null; this.oscB=null; this.nsrc=null;
+    }catch(e){ this.started=false; }
+  }
+};
+
+/* ==========================================================
+   6. SCÈNE (canvas : garage + piste)
+   ========================================================== */
+var cvs=$('scene'), ctx=cvs.getContext('2d'), W=360, H=300, DPR=1, T=0;
+var phase='garage', countT=0;
+var run = { on:false, t:0, v:0, worldM:0, lift:0, fly:0, flyOn:false, tilt:0, wheelA:0, dead:false, reason:'', build:null, emit:0, shake:0 };
+var parts = [];
+
+function resize(){
+  DPR = Math.min(2, window.devicePixelRatio||1);
+  var r = cvs.getBoundingClientRect();
+  W = Math.max(300, Math.round(r.width||300));
+  H = Math.max(220, Math.round(r.height||220));
+  cvs.width = Math.round(W*DPR); cvs.height = Math.round(H*DPR);
+  ctx.setTransform(DPR,0,0,DPR,0,0);
+  layoutSlots();
+}
+function view(){
+  var zoom = (phase==='run'||phase==='over') ? lerp(1,0.55,clamp(run.v/55,0,1)) : 1;
+  var s = Math.min(W/540, H/320)*zoom*(run.on?1.12:1);
+  s = Math.max(0.35, s);
+  var gy = H*(run.on?0.8:0.74);
+  var px = run.on ? W*0.2 : W*0.5 - (CAR.w/2)*s;
+  var py = gy - CAR.h*s - run.lift;
+  return {s:s,px:px,py:py,gy:gy,ppm:60*s};
+}
+function L(v,x,y){ return {x:v.px+x*v.s, y:v.py+y*v.s}; }
+
+/* ---------- particules ---------- */
+function spawn(o){
+  if(parts.length>420) return;
+  parts.push({x:o.x,y:o.y,vx:o.vx,vy:o.vy,g:o.g||0,life:o.life,t:0,size:o.size||20,
+    emo:o.emo||null,col:o.col||'#fff',rot:o.rot||0,vr:o.vr||0,txt:o.txt||null});
+}
+function puffFx(fxId,x,y,n,spread,pow){
+  var f=FXS[fxId]||FXS.dust;
+  for(var i=0;i<n;i++){
+    var a=rnd(-spread,spread), p=pow*rnd(0.5,1.4);
+    spawn({x:x+rnd(-6,6),y:y+rnd(-6,6),vx:Math.cos(a)*p,vy:Math.sin(a)*p-rnd(10,60),g:60,
+      life:rnd(0.5,1.2),size:rnd(12,30),emo:pick(f.e),vr:rnd(-3,3)});
+  }
+}
+function updateParts(dt){
+  for(var i=parts.length-1;i>=0;i--){
+    var p=parts[i]; p.t+=dt;
+    if(p.t>=p.life){ parts.splice(i,1); continue; }
+    p.x+=p.vx*dt; p.y+=p.vy*dt; p.vy+=p.g*dt; p.rot+=p.vr*dt;
+  }
+}
+function drawParts(){
+  ctx.textAlign='center'; ctx.textBaseline='middle';
+  for(var i=0;i<parts.length;i++){
+    var p=parts[i], k=1-p.t/p.life;
+    ctx.save(); ctx.globalAlpha=clamp(k*1.2,0,1); ctx.translate(p.x,p.y); ctx.rotate(p.rot);
+    if(p.emo){ ctx.font=p.size+'px serif'; ctx.fillText(p.emo,0,0); }
+    else if(p.txt){ ctx.font='800 '+p.size+'px system-ui,sans-serif'; ctx.fillStyle=p.col; ctx.fillText(p.txt,0,0); }
+    else { ctx.fillStyle=p.col; ctx.beginPath(); ctx.arc(0,0,p.size/2,0,6.2832); ctx.fill(); }
+    ctx.restore();
+  }
+  ctx.globalAlpha=1;
+}
+
+/* ---------- voiture ---------- */
+function drawCar(v,b,opts){
+  var o=opts||{};
+  ctx.save();
+  ctx.translate(v.px, v.py + (o.bob||0));
+  ctx.translate(CAR.wheels[0].x, CAR.wheels[0].y); ctx.rotate(o.tilt||0); ctx.translate(-CAR.wheels[0].x, -CAR.wheels[0].y);
+  ctx.scale(v.s, v.s);
+
+  /* ombre */
+  ctx.save(); ctx.globalAlpha=run.on?0.28:0.4; ctx.fillStyle='#000';
+  ctx.beginPath(); ctx.ellipse(CAR.w/2, CAR.h-2+ (run.lift/(v.s||1))*0.12, CAR.w*0.44, 9, 0, 0, 6.2832); ctx.fill(); ctx.restore();
+
+  var bodyPath=new Path2D(CAR.body), glassPath=new Path2D(CAR.glass);
+  var col = b ? b.color : '#6f7f95';
+
+  /* caisse */
+  var grd=ctx.createLinearGradient(0,10,0,92);
+  grd.addColorStop(0, shade(col,55)); grd.addColorStop(0.55, col); grd.addColorStop(1, shade(col,-45));
+  ctx.fillStyle=grd; ctx.fill(bodyPath);
+  ctx.lineWidth=3; ctx.strokeStyle='rgba(0,0,0,.55)'; ctx.stroke(bodyPath);
+
+  /* capot : zone du moteur */
+  ctx.save(); ctx.globalAlpha=b&&b.src?0.55:0.9;
+  ctx.fillStyle = b&&b.src ? 'rgba(0,0,0,.3)' : 'rgba(255,255,255,.08)';
+  ctx.beginPath(); ctx.moveTo(196,50); ctx.lineTo(246,58); ctx.lineTo(246,66); ctx.lineTo(196,60); ctx.closePath(); ctx.fill();
+  if(b && b.src){
+    var gl=ctx.createRadialGradient(222,52,2,222,52,42);
+    gl.addColorStop(0, rgba(col,0.85)); gl.addColorStop(1, rgba(col,0));
+    ctx.fillStyle=gl; ctx.beginPath(); ctx.arc(222,52,42,0,6.2832); ctx.fill();
+  }
+  ctx.restore();
+
+  /* vitre + conducteur */
+  ctx.fillStyle='rgba(180,230,255,.55)'; ctx.fill(glassPath);
+  ctx.save(); ctx.clip(glassPath);
+  ctx.fillStyle='#243144';
+  ctx.beginPath(); ctx.arc(128,36,10,0,6.2832); ctx.fill();
+  ctx.fillRect(118,42,22,10);
+  ctx.fillStyle='#ffd9b8'; ctx.beginPath(); ctx.arc(136,38,7,0,6.2832); ctx.fill();
+  ctx.fillStyle='#e8434f'; ctx.beginPath(); ctx.arc(136,35,7.5,3.3,6.1); ctx.fill();
+  ctx.restore();
+
+  /* phare */
+  ctx.fillStyle='#fff4c2'; ctx.beginPath(); ctx.ellipse(250,64,4.5,6,0,0,6.2832); ctx.fill();
+
+  /* roues */
+  for(var i=0;i<CAR.wheels.length;i++){
+    var w=CAR.wheels[i];
+    ctx.save(); ctx.translate(w.x,w.y);
+    ctx.fillStyle='#0d1016'; ctx.beginPath(); ctx.arc(0,0,w.r,0,6.2832); ctx.fill();
+    ctx.strokeStyle='#39485e'; ctx.lineWidth=2;
+    ctx.beginPath(); ctx.arc(0,0,w.r-4,0,6.2832); ctx.stroke();
+    ctx.rotate(o.wheelA||0);
+    ctx.fillStyle='#c9d6e6'; ctx.beginPath(); ctx.arc(0,0,w.r-7,0,6.2832); ctx.fill();
+    ctx.strokeStyle='#6b7d95'; ctx.lineWidth=2.6;
+    for(var k=0;k<4;k++){ ctx.rotate(1.5708); ctx.beginPath(); ctx.moveTo(0,0); ctx.lineTo(0,-(w.r-8)); ctx.stroke(); }
+    ctx.fillStyle='#33415a'; ctx.beginPath(); ctx.arc(0,0,3.4,0,6.2832); ctx.fill();
+    ctx.restore();
+  }
+
+  /* équipement sur le toit */
+  if(b && b.gad){
+    ctx.font='30px serif'; ctx.textAlign='center'; ctx.textBaseline='middle';
+    ctx.fillText(b.gad.emoji, 132, 2);
+  }
+  /* pièce manquante */
+  if(!b || !b.src){
+    ctx.save(); ctx.globalAlpha=0.75+0.25*Math.sin(T*4);
+    ctx.font='800 15px system-ui,sans-serif'; ctx.fillStyle='#ffd23f'; ctx.textAlign='center';
+    ctx.fillText('?', 226, 20); ctx.restore();
+  }
+  if(run.dead){
+    ctx.font='26px serif'; ctx.textAlign='center'; ctx.fillText('💥', 150, 30);
+  }
+  ctx.restore();
+}
+function shade(hex,amt){
+  var c=hex.replace('#',''); if(c.length===3) c=c.charAt(0)+c.charAt(0)+c.charAt(1)+c.charAt(1)+c.charAt(2)+c.charAt(2);
+  var r=clamp(parseInt(c.substr(0,2),16)+amt,0,255), g=clamp(parseInt(c.substr(2,2),16)+amt,0,255), b=clamp(parseInt(c.substr(4,2),16)+amt,0,255);
+  return 'rgb('+r+','+g+','+b+')';
+}
+function rgba(hex,a){
+  var c=hex.replace('#',''); if(c.length===3) c=c.charAt(0)+c.charAt(0)+c.charAt(1)+c.charAt(1)+c.charAt(2)+c.charAt(2);
+  return 'rgba('+parseInt(c.substr(0,2),16)+','+parseInt(c.substr(2,2),16)+','+parseInt(c.substr(4,2),16)+','+a+')';
+}
+
+/* ---------- garage ---------- */
+function drawGarage(v,b){
+  var g=ctx.createLinearGradient(0,0,0,H); g.addColorStop(0,'#141d29'); g.addColorStop(1,'#0a0f16');
+  ctx.fillStyle=g; ctx.fillRect(0,0,W,H);
+
+  /* néon */
+  ctx.save(); ctx.globalAlpha=0.9; ctx.strokeStyle='#2ee6d6'; ctx.lineWidth=3;
+  ctx.shadowColor='#2ee6d6'; ctx.shadowBlur=18;
+  ctx.strokeRect(W*0.06,H*0.08,Math.min(220,W*0.36),44);
+  ctx.font='800 '+Math.round(Math.min(22,W*0.03))+'px system-ui,sans-serif';
+  ctx.fillStyle='#d9fff9'; ctx.textAlign='center'; ctx.textBaseline='middle'; ctx.shadowBlur=10;
+  ctx.fillText('ATELIER', W*0.06+Math.min(220,W*0.36)/2, H*0.08+23);
+  ctx.restore();
+
+  /* panneau à outils */
+  var bx=W*0.78, by=H*0.12;
+  ctx.fillStyle='#131c27'; ctx.strokeStyle='#243244'; ctx.lineWidth=2;
+  ctx.beginPath(); ctx.rect(bx,by,Math.min(150,W*0.2),90); ctx.fill(); ctx.stroke();
+  ctx.font='24px serif'; ctx.textAlign='center'; ctx.textBaseline='middle';
+  var tools=['🔧','🔩','⚒️','🧰'];
+  for(var i=0;i<tools.length;i++) ctx.fillText(tools[i], bx+22+i*32, by+26);
+  ctx.font='11px system-ui,sans-serif'; ctx.fillStyle='#5f728c'; ctx.fillText('OUTILS', bx+Math.min(150,W*0.2)/2, by+66);
+
+  /* sol */
+  ctx.fillStyle='#0e1620'; ctx.fillRect(0,v.gy,W,H-v.gy);
+  ctx.strokeStyle='rgba(255,255,255,.07)'; ctx.lineWidth=2;
+  for(var j=0;j<14;j++){
+    var x=j/13*W;
+    ctx.beginPath(); ctx.moveTo(x,v.gy); ctx.lineTo(W/2 + (x-W/2)*2.6, H); ctx.stroke();
+  }
+  ctx.beginPath(); ctx.moveTo(0,v.gy); ctx.lineTo(W,v.gy); ctx.strokeStyle='rgba(255,210,63,.35)'; ctx.stroke();
+
+  /* halo sous la voiture */
+  if(b){
+    var rg=ctx.createRadialGradient(W/2,v.gy,10,W/2,v.gy,W*0.34);
+    rg.addColorStop(0,rgba(b.color,0.3)); rg.addColorStop(1,rgba(b.color,0));
+    ctx.fillStyle=rg; ctx.fillRect(0,v.gy-60,W,120);
+  }
+}
+
+/* ---------- piste ---------- */
+function drawTrack(v,b){
+  var sky=(b&&b.sky)||FXS.dust.sky;
+  var g=ctx.createLinearGradient(0,0,0,v.gy); g.addColorStop(0,sky[0]); g.addColorStop(1,sky[1]);
+  ctx.fillStyle=g; ctx.fillRect(0,0,W,v.gy);
+
+  /* étoiles */
+  var fx=FXS[b?b.fx:'dust'];
+  if(fx && fx.stars){
+    for(var i=0;i<40;i++){
+      var sx=h1(i)*W, sy=h1(i+99)*v.gy*0.8, r=0.8+h1(i+7)*1.8;
+      ctx.globalAlpha=0.35+0.55*Math.abs(Math.sin(T*1.5+i));
+      ctx.fillStyle='#fff'; ctx.beginPath(); ctx.arc(sx,sy,r,0,6.2832); ctx.fill();
+    }
+    ctx.globalAlpha=1;
+  } else {
+    ctx.fillStyle='rgba(255,255,255,.75)';
+    ctx.beginPath(); ctx.arc(W*0.82,H*0.16,26,0,6.2832); ctx.fill();
+  }
+
+  var ph=run.worldM*v.ppm, par=0.18;
+  /* collines lointaines */
+  ctx.fillStyle='rgba(0,0,0,.22)'; ctx.beginPath(); ctx.moveTo(0,v.gy);
+  for(var x=0;x<=W;x+=18){ var yy=v.gy-34-26*Math.sin((x+ph*par)*0.006)-13*Math.sin((x+ph*par)*0.017); ctx.lineTo(x,yy); }
+  ctx.lineTo(W,v.gy); ctx.closePath(); ctx.fill();
+  /* collines proches */
+  par=0.4;
+  ctx.fillStyle='rgba(0,0,0,.34)'; ctx.beginPath(); ctx.moveTo(0,v.gy);
+  for(var x2=0;x2<=W;x2+=18){ var y2=v.gy-14-16*Math.sin((x2+ph*par)*0.009)-9*Math.sin((x2+ph*par)*0.023); ctx.lineTo(x2,y2); }
+  ctx.lineTo(W,v.gy); ctx.closePath(); ctx.fill();
+
+  /* route */
+  ctx.fillStyle='#1d232c'; ctx.fillRect(0,v.gy,W,H-v.gy);
+  ctx.fillStyle='rgba(255,255,255,.14)'; ctx.fillRect(0,v.gy,W,4);
+
+  var ox=W*0.2, dec=(b&&b.decor)||DECOR, SP=24;
+  var mLeft=run.worldM-ox/v.ppm, mRight=run.worldM+(W-ox)/v.ppm;
+
+  /* décors */
+  var k0=Math.floor(mLeft/SP)-1, k1=Math.ceil(mRight/SP)+1;
+  ctx.textAlign='center'; ctx.textBaseline='alphabetic';
+  for(var k=k0;k<=k1;k++){
+    var xx=ox+(k*SP-run.worldM)*v.ppm;
+    ctx.font=Math.round(clamp(v.ppm*1.6,14,40))+'px serif';
+    ctx.fillText(dec[Math.floor(h1(k*3.7)*dec.length)%dec.length], xx, v.gy-2);
+  }
+  /* lignes blanches */
+  ctx.fillStyle='rgba(255,255,255,.7)';
+  var S2=5;
+  for(var k2=Math.floor(mLeft/S2);k2<=mRight/S2;k2++){
+    if(k2%2) continue;
+    var lx=ox+(k2*S2-run.worldM)*v.ppm;
+    ctx.fillRect(lx, v.gy+(H-v.gy)*0.45, Math.max(8,v.ppm*2), Math.max(3,H*0.008));
+  }
+  /* panneaux de distance tous les 100 m */
+  for(var s=Math.ceil(Math.max(0,mLeft)/100);s*100<=mRight;s++){
+    var mx=ox+(s*100-run.worldM)*v.ppm;
+    if(mx<-40||mx>W) continue;
+    ctx.fillStyle='#243040'; ctx.fillRect(mx-2,v.gy-46,4,46);
+    ctx.fillStyle='#ffd23f'; ctx.fillRect(mx-26,v.gy-66,52,24);
+    ctx.fillStyle='#20180a'; ctx.font='800 13px system-ui,sans-serif'; ctx.textBaseline='middle';
+    ctx.fillText(s*100+' m', mx, v.gy-54);
+    ctx.textBaseline='alphabetic';
+  }
+  /* ligne de départ */
+  var sx2=ox+(0-run.worldM)*v.ppm;
+  if(sx2>-30 && sx2<W){
+    for(var q=0;q<6;q++){
+      ctx.fillStyle=q%2?'#fff':'#111';
+      ctx.fillRect(sx2-6, v.gy+q*(H-v.gy)/6, 12, (H-v.gy)/6);
+    }
+  }
+  /* ligne du record */
+  if(store.best>0){
+    var rx=ox+(store.best-run.worldM)*v.ppm;
+    if(rx>-60 && rx<W){
+      ctx.strokeStyle='rgba(255,210,63,.8)'; ctx.setLineDash([7,6]); ctx.lineWidth=3;
+      ctx.beginPath(); ctx.moveTo(rx,v.gy-8); ctx.lineTo(rx,H*0.12); ctx.stroke(); ctx.setLineDash([]);
+      ctx.fillStyle='#ffd23f'; ctx.font='800 15px system-ui,sans-serif'; ctx.textAlign='center';
+      ctx.fillText('🏆 '+fmtDist(store.best), rx, H*0.12-6);
+    }
+  }
+}
+
+/* ---------- rendu ---------- */
+function render(v,b){
+  if(run.on || phase==='over'){ drawTrack(v,b); } else { drawGarage(v,b); }
+  var bob = (phase==='garage') ? Math.sin(T*2)*1.6 : 0;
+  if(run.shake>0) bob += Math.sin(T*70)*run.shake*3;
+  drawCar(v,b,{bob:bob,tilt:run.tilt,wheelA:run.wheelA});
+  drawParts();
+}
+
+/* ==========================================================
+   7. INTERFACE
+   ========================================================== */
+var trayEl=$('tray'), tabsEl=$('tabs'), slotsEl=$('slots'), factEl=$('fact'),
+    statsEl=$('stats'), verdictEl=$('verdict'), comboEl=$('comboList'), goEl=$('btnGo'),
+    ghostEl=$('ghost'), toastEl=$('toast'), slotEls={};
+
+function itemOf(type,id){
+  if(type==='src') return byId(SOURCES,id);
+  if(type==='mot') return byId(MOTORS,id);
+  return byId(GADGETS,id);
+}
+function pipsFor(type,it){
+  var out=[];
+  if(type==='src'){
+    out.push(h('span',null,'⚡'+it.E), h('span',null,'🔋'+it.A), h('span',null,'💥'+it.R), h('span',null,leaves(it.eco)));
+  } else if(type==='mot'){
+    out.push(h('span',null,'🔧'+it.rend), h('span',null,'💪'+it.couple), h('span',null,'🛡️'+it.stab));
+    if(it.vol) out.push(h('span',null,'🕊️ vole'));
+  } else {
+    var m=it.mods;
+    if(m.pu) out.push(h('span',null,pct(m.pu)+' ⚡'));
+    if(m.auto) out.push(h('span',null,pct(m.auto)+' 🔋'));
+    if(m.risque && m.risque!==1) out.push(h('span',null,pct(m.risque)+' 💥'));
+    if(m.vol) out.push(h('span',null,'🕊️ vole'));
+    if(m.eco) out.push(h('span',null,'+🌱'));
+    if(m.stab) out.push(h('span',null,'+🛡️'));
+    if(m.vitesse) out.push(h('span',null,'+'+m.vitesse+' km/h'));
+  }
+  return out;
+}
+function pct(m){ var v=Math.round((m-1)*100); return (v>0?'+':'')+v+'%'; }
+
+function renderTabs(){
+  fill(tabsEl, TABS.map(function(t){
+    var list = t.k==='src'?SOURCES:(t.k==='mot'?MOTORS:GADGETS);
+    return h('button',{class:'tab'+(state.tab===t.k?' on':''),'data-tab':t.k},[t.nom+' ', h('small',null,String(list.length))]);
+  }));
+}
+function renderTray(){
+  var list = state.tab==='src'?SOURCES:(state.tab==='mot'?MOTORS:GADGETS);
+  var selSrc = state.src ? byId(SOURCES,state.src) : null;
+  fill(trayEl, list.map(function(it){
+    var star=false;
+    if(state.tab==='src' && state.mot && it.best && it.best.indexOf(state.mot)>=0) star=true;
+    if(state.tab==='mot' && selSrc && selSrc.best && selSrc.best.indexOf(it.id)>=0) star=true;
+    return h('div',{class:'card'+(state[state.tab]===it.id?' sel':'')+(star?' star':''),
+                    'data-type':state.tab,'data-id':it.id},[
+      h('div',{class:'emo',text:it.emoji}),
+      h('div',{class:'nom',text:it.nom}),
+      h('div',{class:'pips'},pipsFor(state.tab,it))
+    ]);
+  }));
+}
+function renderSlots(){
+  for(var i=0;i<SLOT_DEF.length;i++){
+    var d=SLOT_DEF[i], el=slotEls[d.type], id=state[d.type], it=itemOf(d.type,id);
+    el.classList.toggle('filled', !!id);
+    el.classList.toggle('pulse', !id && d.type==='src' && !state.src);
+    el.querySelector('.e').textContent = it ? it.emoji : (d.type==='src'?'⚡':(d.type==='mot'?'⚙️':'🎁'));
+    el.querySelector('.lb').textContent = it ? '' : d.nom;
+  }
+  layoutSlots();
+}
+function layoutSlots(){
+  var v=view();
+  for(var i=0;i<SLOT_DEF.length;i++){
+    var d=SLOT_DEF[i], el=slotEls[d.type], size=Math.round(clamp(74*v.s,44,104));
+    var p=L(v,d.x,d.y);
+    el.style.width=size+'px'; el.style.height=size+'px';
+    el.style.left=Math.round(p.x-size/2)+'px'; el.style.top=Math.round(p.y-size/2)+'px';
+    el.querySelector('.e').style.fontSize=Math.round(size*0.42)+'px';
+    el.querySelector('.lb').style.fontSize=Math.round(clamp(size*0.135,7,13))+'px';
+  }
+}
+function bar(k,val,max,txt){
+  var w=Math.round(clamp(val/max,0,1)*100);
+  return h('div',{class:'st'},[
+    h('span',{class:'k',text:k}),
+    h('span',{class:'bar'},h('i',{style:'width:'+w+'%'})),
+    h('span',{class:'v',text:txt})
+  ]);
+}
+function renderStats(){
+  var b=buildFromState();
+  if(!b){
+    fill(statsEl,[bar('PUIS.',0,450,'0 ch'),bar('VITESSE',0,420,'0 km/h'),bar('AUTONOMIE',0,1600,'0 m'),
+                  bar('RISQUE',0,100,'0 %'),bar('ÉCO',0,10,leaves(0))]);
+    fill(verdictEl, h('span',{style:'color:#8ea2bd',text:'Fais glisser une source d’énergie dans le capot pour lancer les calculs…'}));
+    fill(comboEl,[]); goEl.classList.add('dim');
+    return;
+  }
+  fill(statsEl,[bar('PUIS.',b.pu,450,b.pu+' ch'), bar('VITESSE',b.kmh,420,b.kmh+' km/h'),
+                bar('AUTONOMIE',b.portee,1600,fmtDist(b.portee)), bar('RISQUE',b.risk,100,b.risk+' %'),
+                bar('ÉCO',b.eco,10,leaves(b.eco))]);
+  fill(verdictEl,[h('b',{text:b.titre}),' · '+b.phrase, h('br'), h('span',{style:'color:#9fb3cc',text:b.ecoMot})]);
+  fill(comboEl, b.combos.map(function(c){ return h('span',{class:'cbadge',text:'🧪 '+c.nom}); }));
+  goEl.classList.remove('dim');
+}
+function factLine(emo,kids){ fill(factEl,[h('span',{class:'big',text:emo}), h('span',null,kids)]); }
+function renderFact(it){
+  if(!it){ return; }
+  factLine(it.emoji,[h('b',{text:it.nom}),' — '+it.fact]);
+}
+function setTab(k){ state.tab=k; renderTabs(); renderTray(); }
+
+function place(type,id,silent){
+  state[type]=id;
+  var it=itemOf(type,id);
+  if(!silent){ Sound.place(); if(navigator.vibrate) try{ navigator.vibrate(14); }catch(e){} }
+  if(it) renderFact(it);
+  renderSlots(); renderStats(); renderTray();
+  guideNext();
+}
+function clearSlot(type){
+  if(!state[type]) return;
+  state[type]=null; Sound.nope();
+  renderSlots(); renderStats(); renderTray();
+  factLine('🧹','Pièce retirée. Le moteur attend mieux que ça.');
+}
+function guideNext(){
+  if(state.src && !state.mot && !state.nudges.mot){ state.nudges.mot=1; setTab('mot'); toast('👍 Maintenant choisis un moteur !'); }
+  else if(state.src && state.mot && !state.gad && !state.nudges.gad){ state.nudges.gad=1; setTab('gad'); toast('🎁 Et un équipement, pour la tune !'); }
+}
+var toastTimer=null;
+function toast(msg){
+  toastEl.textContent=msg; toastEl.classList.remove('hide');
+  if(toastTimer) clearTimeout(toastTimer);
+  toastTimer=setTimeout(function(){ toastEl.classList.add('hide'); }, 2400);
+}
+function randomBuild(){
+  var useCombo = Math.random()<0.4;
+  if(useCombo){
+    var c=pick(COMBOS);
+    var s=c.src?pick(c.src):pick(SOURCES).id;
+    var m=c.mot?pick(c.mot):pick(MOTORS).id;
+    var g=c.gad?pick(c.gad):(Math.random()<0.5?null:pick(GADGETS).id);
+    state.src=s; state.mot=m; state.gad=g;
+  } else {
+    state.src=pick(SOURCES).id; state.mot=pick(MOTORS).id; state.gad=Math.random()<0.75?pick(GADGETS).id:null;
+  }
+  Sound.place(); renderSlots(); renderStats(); renderTray();
+  var b=buildFromState();
+  if(b) renderFact(b.src);
+  toast('🎲 '+b.titre+' !');
+}
+
+/* ---------- glisser-déposer ---------- */
+var drag=null;
+function onTrayDown(e){
+  var card=e.target.closest ? e.target.closest('.card') : null;
+  if(!card) return;
+  Sound.wake();
+  drag={type:card.getAttribute('data-type'), id:card.getAttribute('data-id'),
+        x0:e.clientX, y0:e.clientY, moved:false, card:card};
+  window.addEventListener('pointermove',onDragMove);
+  window.addEventListener('pointerup',onDragUp);
+  window.addEventListener('pointercancel',onDragCancel);
+}
+function startGhost(){
+  var it=itemOf(drag.type,drag.id);
+  ghostEl.textContent=it?it.emoji:'❔';
+  ghostEl.classList.remove('hide');
+  if(drag.card) drag.card.classList.add('lift');
+}
+function moveGhost(x,y){ ghostEl.style.left=x+'px'; ghostEl.style.top=y+'px'; }
+function slotAt(x,y){
+  var els=document.elementsFromPoint?document.elementsFromPoint(x,y):[document.elementFromPoint(x,y)];
+  for(var i=0;i<els.length;i++){
+    var el=els[i];
+    if(el && el.closest){ var s=el.closest('.slot'); if(s) return s; }
+  }
+  return null;
+}
+function clearSlotStates(){
+  for(var k in slotEls){ slotEls[k].classList.remove('ok','no'); }
+}
+function onDragMove(e){
+  if(!drag) return;
+  if(!drag.moved){
+    if(Math.abs(e.clientX-drag.x0)+Math.abs(e.clientY-drag.y0) < 14) return;
+    drag.moved=true; startGhost();
+  }
+  moveGhost(e.clientX,e.clientY);
+  var s=slotAt(e.clientX,e.clientY);
+  clearSlotStates();
+  if(s) s.classList.add(s.getAttribute('data-type')===drag.type?'ok':'no');
+  e.preventDefault();
+}
+function onDragUp(e){
+  window.removeEventListener('pointermove',onDragMove);
+  window.removeEventListener('pointerup',onDragUp);
+  window.removeEventListener('pointercancel',onDragCancel);
+  if(!drag) return;
+  var d=drag; drag=null;
+  ghostEl.classList.add('hide'); clearSlotStates();
+  if(d.card) d.card.classList.remove('lift');
+  if(!d.moved){ place(d.type,d.id); return; }
+  var s=slotAt(e.clientX,e.clientY);
+  if(!s){ toast('😅 Relâche la pièce sur son emplacement'); return; }
+  if(s.getAttribute('data-type')!==d.type){
+    s.classList.add('no'); setTimeout(function(){ s.classList.remove('no'); },350);
+    Sound.nope();
+    var need=s.getAttribute('data-type');
+    toast(need==='src'?'⚡ Ici, c’est la place de l’ÉNERGIE !':(need==='mot'?'⚙️ Ici, c’est la place du MOTEUR !':'🎁 Ici, c’est la place de l’ÉQUIPEMENT !'));
+    return;
+  }
+  place(d.type,d.id);
+}
+function onDragCancel(){
+  window.removeEventListener('pointermove',onDragMove);
+  window.removeEventListener('pointerup',onDragUp);
+  window.removeEventListener('pointercancel',onDragCancel);
+  if(drag && drag.card) drag.card.classList.remove('lift');
+  drag=null; ghostEl.classList.add('hide'); clearSlotStates();
+}
+
+/* ==========================================================
+   8. ESSAI SUR PISTE
+   ========================================================== */
+function resetRun(b){
+  run.on=true; run.build=b; run.t=0; run.v=0; run.worldM=0; run.lift=0; run.fly=0; run.flyOn=false;
+  run.tilt=0; run.wheelA=0; run.dead=false; run.reason=''; run.emit=0; run.shake=0;
+  run.fuel=b.portee;   /* mètres disponibles dans le réservoir */
+  parts.length=0;
+}
+var resultTimer=null;
+function startRun(){
+  Sound.wake();
+  if(resultTimer){ clearTimeout(resultTimer); resultTimer=null; }
+  var b=buildFromState();
+  if(!b){ toast('⚡ Choisis d’abord une source d’énergie !'); Sound.nope(); setTab('src'); return; }
+  $('result').classList.remove('show');
+  document.body.classList.add('run'); resize();
+  resetRun(b);
+  phase='count'; countT=1.9;
+  Sound.engineStart(b.pu);
+  Sound.blip(300,0.1,'square',0.18);
+}
+function stopEngineSoon(){ Sound.engineStop(); }
+function tickGarage(dt,b){
+  run.tilt=lerp(run.tilt,0,dt*4);
+  run.wheelA += dt*0.3;
+  if(b && b.src && Math.random()<dt*7){
+    var v=view(), p=L(v,226,34);
+    puffFx(b.fx,p.x,p.y,1,1.2,40);
+  }
+  run.shake=Math.max(0,run.shake-dt*3);
+}
+function tickCount(dt,b){
+  run.shake=0.6+0.4*Math.sin(T*30);
+  run.wheelA += dt*3;
+  if(b && Math.random()<dt*22){ var v=view(), p=L(v,4,74); puffFx(b.fx,p.x,p.y,1,0.7,140); }
+  if(countT<=0){ phase='run'; }
+}
+function tickRun(dt,b){
+  run.t+=dt;
+  var target=b.topMps*(run.fly?1.2:1);
+  var k=0.8+clamp(b.pu/240,0,1.6);
+  run.v += (target-run.v)*clamp(dt*k,0,1);
+  run.worldM += run.v*dt;
+  run.wheelA += run.v*dt/0.3;
+
+  if(b.vol && run.v>13) run.flyOn=true;
+  run.fly = lerp(run.fly, run.flyOn?1:0, dt*1.1);
+  run.lift = run.fly*Math.min(H*0.3,130);
+  run.tilt = lerp(run.tilt, clamp((target-run.v)/60,0,1)*-0.07 + (run.fly?0.06:0), dt*3);
+
+  /* échappement */
+  var v=view(), ex=L(v,2,74);
+  run.emit += dt*(14+clamp(b.pu/12,0,60));
+  while(run.emit>1){ run.emit-=1; puffFx(b.fx,ex.x,ex.y,1,0.5,60+clamp(b.pu*0.25,0,240)); }
+  /* traînée de vitesse */
+  if(run.v>26 && Math.random()<dt*20){
+    spawn({x:rnd(0,W),y:rnd(H*0.1,v.gy-10),vx:-run.v*v.ppm*0.9,vy:0,g:0,life:0.32,size:0,col:'rgba(255,255,255,.35)'});
+  }
+  Sound.engineSet(run.v/60,b.pu);
+
+  /* compteurs */
+  $('hudKmh').textContent=Math.round(run.v*3.6);
+  $('hudM').textContent=nf(run.worldM);
+  $('hudF').textContent=nf(Math.max(0,run.fuel-run.worldM));
+  if(run.worldM>=run.fuel) return finish('sec');
+
+  /* pannes : le risque % = probabilité de casser pendant l’essai complet */
+  var lambda = -Math.log(1-Math.min(0.97,b.risk/100))/RUN_MAX;
+  if(Math.random() < lambda*dt) return finish('casse');
+  if(run.t>=RUN_MAX) return finish('bout');
+}
+function tickOver(dt){
+  run.shake=Math.max(0,run.shake-dt*1.6);
+  if(run.reason==='sec'){ run.v*=Math.pow(0.2,dt); run.worldM+=run.v*dt; run.wheelA+=run.v*dt/0.3; }
+  if(run.reason==='casse'){ run.v*=Math.pow(0.02,dt); run.worldM+=run.v*dt; }
+  if(run.dead && Math.random()<dt*10){ var v=view(), p=L(v,140,40); puffFx('smoke',p.x,p.y,1,1.4,70); }
+  Sound.engineSet(run.v/60,run.build?run.build.pu:0);
+  $('hudKmh').textContent=Math.round(run.v*3.6);
+  $('hudM').textContent=nf(run.worldM);
+  $('hudF').textContent=nf(Math.max(0,run.fuel-run.worldM));
+}
+function finish(reason){
+  if(phase==='over') return;
+  phase='over'; run.reason=reason; run.dead=(reason==='casse');
+  var b=run.build, v=view();
+  if(reason==='casse'){
+    Sound.boom(); Sound.engineStop();
+    if(navigator.vibrate) try{ navigator.vibrate([30,40,90]); }catch(e){}
+    run.shake=1.4;
+    var p=L(v,140,44);
+    puffFx(b.fx,p.x,p.y,26,3.2,420);
+    puffFx('smoke',p.x,p.y,16,3.2,260);
+    spawn({x:p.x,y:p.y-20,vx:0,vy:-40,g:0,life:1.6,size:34,txt:'CASSE !',col:'#ff5c7a'});
+  } else if(reason==='sec'){
+    Sound.blip(240,0.5,'sine',0.16); stopEngineSoon();
+    var p2=L(v,226,40);
+    puffFx('dust',p2.x,p2.y,10,2,120);
+    spawn({x:p2.x,y:p2.y-30,vx:0,vy:-30,g:0,life:1.6,size:26,txt:'PANNE SÈCHE !',col:'#ffd23f'});
+  } else if(reason==='bout'){
+    stopEngineSoon(); Sound.chime();
+    var p3=L(v,140,20);
+    spawn({x:p3.x,y:p3.y,vx:0,vy:-30,g:0,life:1.6,size:30,txt:'🏁',col:'#fff'});
+  } else { stopEngineSoon(); }
+
+  var dist=run.worldM, isNew=false;
+  if(dist>store.best){ store.best=dist; isNew=true; saveStore(); $('recVal').textContent=fmtDist(store.best); }
+  var newCombos=[];
+  for(var i=0;i<b.combos.length;i++){
+    var c=b.combos[i];
+    if(!store.found[c.id]){ store.found[c.id]=1; newCombos.push(c); }
+  }
+  if(newCombos.length) saveStore();
+  if(resultTimer) clearTimeout(resultTimer);
+  resultTimer=setTimeout(function(){ resultTimer=null; showResult(reason,dist,isNew,newCombos); }, reason==='bout'?700:1100);
+}
+function backToGarage(){
+  if(resultTimer){ clearTimeout(resultTimer); resultTimer=null; }
+  $('result').classList.remove('show');
+  document.body.classList.remove('run');
+  phase='garage'; run.on=false; run.lift=0; run.dead=false;
+  Sound.engineStop();
+  parts.length=0; resize();
+}
+function showResult(reason,dist,isNew,newCombos){
+  var b=run.build;
+  var why = reason==='casse' ? '💥 Casse mécanique ! Le moteur n’a pas tenu.'
+          : reason==='sec' ? '🪫 Panne sèche ! Plus d’énergie dans le réservoir.'
+          : reason==='stop' ? '✋ Essai arrêté par le chef mécano.'
+          : '🏁 Essai terminé au bout de '+num1(RUN_MAX)+' secondes.';
+  var extra = reason==='casse' ? 'Baisse le RISQUE : un moteur plus solide (🛡️) ou de la glace pilée 🧊.'
+            : reason==='sec' ? 'Augmente la PORTÉE : une source endurante (☀️ ⚛️ 🌙), un panneau solaire 🔆 ou du lest 🏋️.'
+            : 'Pour aller plus loin : plus de vitesse… et une portée qui suit.';
+  var rows=[['Vitesse de pointe',b.kmh+' km/h'],['Puissance',b.pu+' ch'],
+            ['Réservoir',fmtDist(b.portee)],['Risque de casse',b.risk+' %'],
+            ['Bilan écologique',b.ecoMot],
+            ['Note du robot mécano',num1(b.note)+'/10 — '+b.titre],
+            ['Bestiaire',b.src.emoji+' '+b.src.nom+' + '+b.mot.emoji+' '+b.mot.nom+(b.gad?' + '+b.gad.emoji+' '+b.gad.nom:'')]]
+    .map(function(r){ return h('div',{class:'kv'},[h('span',{text:r[0]}), h('b',{text:r[1]})]); });
+
+  var kids=[ h('h2',{text:isNew?'🏆 Nouveau record !':'📏 Résultat de l’essai'}),
+             h('div',{class:'bigN',text:fmtDist(dist)}),
+             h('div',{class:'conv',text:conversion(dist)}),
+             h('p',{style:'margin-top:8px',text:why}),
+             h('p',{style:'color:#9fb3cc',text:extra}) ].concat(rows);
+  if(b.combos.length){
+    kids.push(h('h3',{text:'🧪 Recettes déclenchées'}));
+    for(var i=0;i<b.combos.length;i++){
+      var c=b.combos[i], neu=false;
+      for(var j=0;j<newCombos.length;j++) if(newCombos[j].id===c.id) neu=true;
+      kids.push(h('div',{class:'rc on'},[h('span',{class:'t',text:c.nom}),
+        neu?h('span',{class:'tagNew',text:'NOUVEAU'}):null, h('br'), c.tex]));
+    }
+  }
+  var again=h('button',{class:'btn p',text:'🔁 Refaire l’essai'});
+  var back=h('button',{class:'btn',text:'🛠️ Changer de moteur'});
+  again.addEventListener('click',function(){ backToGarage(); startRun(); });
+  back.addEventListener('click',backToGarage);
+  kids.push(h('div',{class:'row'},[again,back]));
+
+  fill($('resultSheet'),kids);
+  $('result').classList.add('show');
+  if(newCombos.length) Sound.chime();
+}
+function renderRecipes(){
+  var n=0;
+  var cards=COMBOS.map(function(c){
+    var on=!!store.found[c.id];
+    if(on) n++;
+    return h('div',{class:'rc'+(on?' on':' off')},[
+      h('span',{class:'t',text:on?c.nom:'❔❔❔'}), h('br'),
+      on?c.tex:'À découvrir en essayant des mélanges…'
+    ]);
+  });
+  $('recTitle').textContent='🧪 Recettes secrètes ('+n+'/'+COMBOS.length+')';
+  fill($('recipes'),cards);
+}
+
+/* ==========================================================
+   9. BOUCLE PRINCIPALE
+   ========================================================== */
+var last=0;
+function frame(ts){
+  var dt=(ts-last)/1000; last=ts;
+  if(!isFinite(dt) || dt<0) dt=0;
+  dt=Math.min(0.045,dt); T+=dt;
+  var b=buildFromState();
+  var cur = run.build && (phase==='run'||phase==='over') ? run.build : b;
+  if(phase==='garage') tickGarage(dt,b);
+  else if(phase==='count'){ countT-=dt; tickCount(dt,cur); }
+  else if(phase==='run') tickRun(dt,cur);
+  else tickOver(dt);
+  updateParts(dt);
+  var v=view();
+  render(v,cur);
+  if(phase==='count'){
+    ctx.save(); ctx.textAlign='center'; ctx.textBaseline='middle';
+    var n=Math.ceil(countT/0.63);
+    ctx.font='900 '+Math.round(Math.min(W,H)*0.28)+'px system-ui,sans-serif';
+    ctx.fillStyle='rgba(0,0,0,.45)'; ctx.fillRect(0,0,W,H);
+    ctx.fillStyle='#ffd23f';
+    ctx.fillText(countT<0.63?'GO !':String(clamp(n,1,3)), W/2, H*0.42);
+    ctx.restore();
+  }
+  requestAnimationFrame(frame);
+}
+
+/* ==========================================================
+   10. DÉMARRAGE
+   ========================================================== */
+function boot(){
+  loadStore();
+  $('recVal').textContent = store.best>0 ? fmtDist(store.best) : '—';
+  $('btnSnd').textContent = store.muted ? '🔇' : '🔊';
+
+  for(var i=0;i<SLOT_DEF.length;i++){
+    var d=SLOT_DEF[i];
+    var el=document.createElement('div');
+    el.className='slot'; el.setAttribute('data-type',d.type);
+    add(el,[h('span',{class:'e'}), h('span',{class:'lb'})]);
+    (function(t){
+      el.addEventListener('pointerdown',function(ev){
+        ev.preventDefault(); Sound.wake();
+        if(state[t]) clearSlot(t);
+        else { setTab(t); toast(TABS[t==='src'?0:(t==='mot'?1:2)].nom+' : choisis une carte en bas !'); }
+      });
+    })(d.type);
+    slotsEl.appendChild(el); slotEls[d.type]=el;
+  }
+
+  renderTabs(); renderTray(); renderSlots(); renderStats(); renderRecipes();
+  resize();
+
+  trayEl.addEventListener('pointerdown',onTrayDown);
+  tabsEl.addEventListener('click',function(e){
+    var t=e.target.closest ? e.target.closest('.tab') : null;
+    if(t){ Sound.wake(); setTab(t.getAttribute('data-tab')); }
+  });
+  goEl.addEventListener('click',function(){
+    if(phase==='garage') startRun(); else if(phase==='run') finish('stop');
+  });
+  $('btnStop').addEventListener('click',function(){ if(phase==='run') finish('stop'); else if(phase==='over') backToGarage(); });
+  $('btnRnd').addEventListener('click',function(){ if(phase!=='garage') return; Sound.wake(); randomBuild(); });
+  $('btnClr').addEventListener('click',function(){
+    if(phase!=='garage') return;
+    state.src=state.mot=state.gad=null;
+    renderSlots(); renderStats(); renderTray(); Sound.nope();
+    factLine('🧹',['Garage vide ! Fais glisser une ',h('b',{text:'source d’énergie'}),' dans le capot.']);
+  });
+  $('btnSnd').addEventListener('click',function(){
+    Sound.wake(); var on = store.muted; Sound.setOn(on);
+    $('btnSnd').textContent = on?'🔊':'🔇';
+    if(on) Sound.blip(700,0.1,'triangle',0.16);
+  });
+  $('btnHelp').addEventListener('click',function(){ renderRecipes(); $('help').classList.add('show'); });
+  $('btnHelpClose').addEventListener('click',function(){ $('help').classList.remove('show'); });
+  $('help').addEventListener('click',function(e){ if(e.target===$('help')) $('help').classList.remove('show'); });
+  $('result').addEventListener('click',function(e){ if(e.target===$('result')) backToGarage(); });
+
+  window.addEventListener('resize',resize);
+  window.addEventListener('orientationchange',function(){ setTimeout(resize,240); });
+  if(window.ResizeObserver){ try{ new ResizeObserver(resize).observe(cvs); }catch(e){} }
+  document.addEventListener('gesturestart',function(e){ e.preventDefault(); },false);
+  document.addEventListener('dblclick',function(e){ e.preventDefault(); },false);
+  document.addEventListener('contextmenu',function(e){ e.preventDefault(); });
+  window.addEventListener('keydown',function(e){
+    if(e.code==='Space'){ e.preventDefault(); if(phase==='garage') startRun(); else if(phase==='run') finish('stop'); }
+    else if(e.key==='c'||e.key==='C'){ $('btnClr').click(); }
+    else if(e.key==='r'||e.key==='R'){ $('btnRnd').click(); }
+  });
+
+  requestAnimationFrame(function(ts){ last=ts; requestAnimationFrame(frame); });
+}
+boot();
+})();
+</script>
+</body>
+</html>
