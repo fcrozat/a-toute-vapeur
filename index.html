@@ -1592,11 +1592,15 @@ const reglesDuJeu = (() => {
     boite_a_fumee: 'Plus de boîte à fumée : la vapeur usée sort où elle peut.',
   };
 
-  // Le pas de la montre de Braise : le vingtième de seconde que la projection se
-  // défend de dépasser par image (`PAS_MAX_PAR_IMAGE`, de l'autre côté du mur). Les
-  // trois temps qui suivent sont donc des secondes de temps d'écran, et une image
-  // vaut une image, au ×1 comme au ×4 — le palier de vitesse ne change que la durée
-  // qu'on donne à l'image, pas la longueur d'une seconde de machine.
+  // Le pas de la montre de Braise : le vingtième de seconde, celui que la projection
+  // se défend de dépasser par image à la vitesse du jour (`PAS_MAX_PAR_IMAGE`, de
+  // l'autre côté du mur). Ses trois temps sont des secondes de temps *machine*, lu
+  // à `engin.tempsEcoule` : elle suit la machine, pas l'horloge murale, et une
+  // machine lancée à ×4 lui fait donc dire ses phrases quatre fois plus vite à
+  // l'œil. Mesuré sur la ligne du jeu, encore : huit phrases en deux cents secondes
+  // de marche à ×1, neuf à ×4 — une ligne toutes les quatre secondes d'écran, pas
+  // une ligne par image. Le jour où un ticket voudra qu'elle suive la montre du
+  // joueur, c'est ici que l'horloge se change, pas dans sa voix.
   const PAS_D_ECRAN = 1 / 20;
 
   function imagesDe(t) {

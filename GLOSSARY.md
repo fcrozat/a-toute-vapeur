@@ -33,8 +33,8 @@ Faire le plein de charbon ou d'eau en passant sur un point du décor : charbonna
 _Avoid_ : ravitaillement, recharge, remplissage
 
 **Rendement**:
-Ce que le jeu compte comme « bien joué » : la distance parcourue rapportée au charbon brûlé. Un engin qui roule beaucoup en gaspillant beaucoup n'a pas un bon rendement.
-_Avoid_ : score, performance, efficacité
+Ce que le jeu compte comme « bien joué » : la distance parcourue rapportée au charbon brûlé. Un engin qui roule beaucoup en gaspillant beaucoup n'a pas un bon rendement. Il peut être négatif — la machine descend et rend du travail pendant que le charbon brûle — et le mot le dit : ce n'est pas une attente.
+_Avoid_ : score, performance, efficacité, nul (un rendement négatif n'est pas nul), attend le charbon (on n'attend pas ce qui est déjà brûlé)
 
 **Soute**:
 La pièce où l'engin garde le charbon qu'il n'a pas encore brûlé.
@@ -45,7 +45,7 @@ La pièce où l'engin garde l'eau que la chaudière n'a pas encore vaporisée. E
 _Avoid_ : réservoir, tonneau, ballon
 
 **Niveau**:
-Ce qui reste dans une soute ou une citerne, rapporté à ce qu'elles contiennent quand elles sont pleines. Il se dit avec les mots du chauffeur : pleine, à moitié, basse, presque vide, vide.
+Ce qui reste dans une soute ou une citerne, rapporté à ce qu'elles contiennent quand elles sont pleines. Il se dit avec les mots du chauffeur : pleine, à moitié, basse, presque vide, vide. Le nombre se lit à côté du mot, en litres ou en kilogrammes : la capacité change quand on branche une seconde citerne, ce qu'on a bu, non.
 _Avoid_ : jauge (la jauge est l'instrument, le niveau ce qu'elle montre), autonomie, pourcentage
 
 **Tours faits**:
@@ -55,6 +55,10 @@ _Avoid_ : rotations, tours de roue, distance
 **Vitesse de temps**:
 La montre du joueur, pas celle de la machine : ×1, ×2, ×4, pour que la longue montée en pression reste une scène et non une corvée. La machine, elle, vit la même physique, minute pour minute.
 _Avoid_ : accéléré, turbo, fast-forward
+
+**Braise**:
+La mécanicienne du jeu. Elle nomme ce qui vient de se passer — un fait, une fois — et se tait. Elle ne donne pas d'ordre, ne répare rien, n'explique pas le cours, et ne reparle pas du même fait avant un temps de refroidissement. Ce qu'elle dit se décide dans les règles du jeu et se garde dans la mémoire ; un bouton coupe et rallume ses phrases, et ce qu'elle n'a pas dit pendant la coupure n'est pas rattrapé après.
+_Avoid_ : coach, tutoriel, assistant, notification, commentateur (elle nomme, elle n'accompagne pas)
 
 **Mémoire (de jeu)**:
 Le carnet du jeu : ce qu'il a déjà rencontré, ce que le garage a décroché, le meilleur rendement mesuré. Vide au premier lancement.
@@ -145,6 +149,10 @@ _Avoid_ : bloquer, s'éteindre (une machine à vapeur ne s'éteint pas), calage
 **Coup de barre**:
 Secousse donnée sur la manivelle par deux bras, dans le sens de la marche. Elle s'ajoute au mouvement déjà là et ne le remplace jamais — donc elle ne freine pas une machine lancée — et elle ne pousse que ce que les mains peuvent suivre : au-dessus de deux radians par seconde, la barre échappe. À froid et sans vapeur, elle ne fait rien tourner. Son emploi premier est de décrocher une machine prise à son point mort.
 _Avoid_ : coup d'accélérateur, poussée (au clavier on donne un coup de barre ; on ne pousse pas l'engin), kickstart
+
+**Tâtonnement**:
+Se dit d'une machine posée dans sa bande morte, entre deux points morts, que la vapeur pousse d'un côté et que la compression rend de l'autre : elle se balance sans partir. Ce n'est ni calée ni patinage, et le modèle hésite vraiment — mesuré, une bascule d'état toutes les vingt images. Le mot de l'écran couvre les deux sans rien inventer de plus : « elle tâtonne ».
+_Avoid_ : clignotement (le défaut est l'affichage, le tâtonnement est l'état), bug, balancement, hésitation (le verbe du jeu est tâtonner)
 
 **Patinage**:
 Tourner des roues sans que le sol donne plus : l'acier glisse sur l'acier, la vapeur part en tours de roues vides et la machine n'avance guère. Le patinage se paie en charbon. Le mot se dit aussi de l'arbre qui tourne sans rien entraîner — plus de roues du tout, la transmission dans le vide : l'organe tourne, rien ne le prend.
