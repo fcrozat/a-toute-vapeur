@@ -883,10 +883,17 @@ test('la mémoire du jeu s’ouvre vide', () => {
   // Les trois cases vides d'avant, et depuis le billet #7 la mémoire de Braise, qui
   // s'ouvre vide elle aussi : rien de dit, rien de refroidi, aucun mot retenu. Le
   // détail de ses cases est promis plus bas, là où sa parole se décide.
-  const { braise, ...leReste } = memo;
-  assert.deepEqual(leReste, { refroidissements: {}, deblocages: [], meilleurRendement: null });
+  const { braise, garage, ...leReste } = memo;
+  assert.deepEqual(leReste, {
+    refroidissements: {}, deblocages: [], meilleurRendement: null,
+    garage: { suivis: {}, aDire: null },
+  });
   assert.equal(Object.keys(memo.refroidissements).length, 0, 'la mémoire porte déjà des refroidissements');
   assert.equal(memo.deblocages.length, 0, 'la mémoire débloque déjà des pièces');
+  // Le garage du billet #10 s'ouvre vide lui aussi : rien suivi, rien compté, aucune
+  // phrase en file. Une ouverture est un fait rencontré, pas un état de départ.
+  assert.deepEqual(garage.suivis, {}, 'le garage suit déjà des faits');
+  assert.equal(garage.aDire, null, 'le garage a déjà une phrase à dire');
   assert.equal(memo.meilleurRendement, null, 'la mémoire connaît déjà un score');
   assert.equal(braise.situationPrecedente, null, 'la mémoire compare déjà des situations');
   assert.equal(Object.keys(braise.dites).length, 0, 'la mémoire a déjà un temps de refroidissement pris');
@@ -1157,18 +1164,28 @@ test("l'établi liste les pièces de l'engin avec leur nombre", () => {
   assert.equal(citerne.nom, 'Citerne', "l'établi n'emploie pas le mot du glossaire");
 });
 
-// Le chiffre du billet, mesuré et non réparé : vingt-huit pièces au catalogue,
-// treize presentees a qui ouvre le jeu. Les quinze autres sont verrouillees, donc
-// absentes du tiroir — ni grisées, ni expliquées, ni nommées (ADR 0006).
+// Le chiffre du billet, mesuré et non réparé : vingt-huit pièces au catalogue, treize
+// presentees a qui ouvre le jeu. Le billet #10 y ajoute les trois gags, disponibles
+// dès la première seconde sans aucun ennui rencontré : ils sont donc de ces lignes
+// dès la première image. Les douze autres restent verrouillées, donc absentes du
+// tiroir — ni grisées, ni expliquées, ni nommées (ADR 0006).
 test('sur une partie neuve, l’établi présente treize pièces sur vingt-huit', () => {
   const catalogue = Object.keys(M.CATALOGUE);
   assert.equal(catalogue.length, 28, 'le catalogue ne compte plus vingt-huit pièces : le compte du billet est à reprendre');
 
   const engin = M.nouvelEngin(R.PIECES_DE_BASE);
-  const rangs = R.etatDuJeu(engin, plaine(), R.nouvelleMemo()).etabli.pieces;
-  assert.equal(rangs.length, 13, `l'établi d'une partie neuve présente ${rangs.length} pièces, et non treize`);
+  const memo = R.nouvelleMemo();
+  const rangs = R.etatDuJeu(engin, plaine(), memo).etabli.pieces;
+  assert.equal(rangs.length, 13 + R.GAGS_DU_GARAGE[0].pieces.length,
+    `l'établi d'une partie neuve présente ${rangs.length} pièces : les treize de l'engin d'ouverture plus les gags du billet #10`);
+  for (const id of R.PIECES_DE_BASE) {
+    assert.ok(rangs.some((r) => r.id === id), `l'établi a oublié la pièce de l'engin d'ouverture « ${id} »`);
+  }
 
-  for (const id of catalogue.filter((id) => !R.PIECES_DE_BASE.includes(id))) {
+  const fermees = catalogue.filter((id) => !R.PIECES_DE_BASE.includes(id)
+    && !R.GAGS_DU_GARAGE[0].pieces.includes(id));
+  assert.equal(fermees.length, 12, 'le compte des pièces verrouillées a bougé : le billet #10 est à relire');
+  for (const id of fermees) {
     assert.ok(!rangs.some((r) => r.id === id), `la pièce verrouillée « ${id} » est nommée à l'établi`);
     assert.ok(!rangs.some((r) => r.nom === M.CATALOGUE[id].nom), `la pièce verrouillée « ${id} » est nommée à l'établi sous son mot du métier`);
   }

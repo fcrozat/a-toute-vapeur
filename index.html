@@ -1193,7 +1193,8 @@ const reglesDuJeu = (() => {
 
   // Une pièce est ouverte à l'établi si l'engin d'ouverture la porte déjà, ou si la
   // mémoire du jeu l'a décrochée. Ce qui écrit `deblocages` — trois calages, une
-  // rampe refusée, un réservoir à sec — est le billet #10 : l'établi ne fait que lire.
+  // rampe refusée, une citerne sèche — est `garage`, plus bas : l'établi ne fait que
+  // lire, et ne se doute pas de ce qui a ouvert.
   function pieceOuverte(id, memo) {
     if (PIECES_DE_BASE.includes(id)) return true;
     const decrochees = (memo && memo.deblocages) || [];
@@ -1221,6 +1222,258 @@ const reglesDuJeu = (() => {
       });
     }
     return lignes;
+  }
+
+  // --- Le garage s'agrandit par le problème (billet n°10) ---------------------
+  //
+  // Une pièce nouvelle ne vient pas d'un niveau franchi ni d'une monnaie comptée :
+  // elle vient de l'ennui que la machine a rencontré (ADR 0006). Le garage n'a
+  // qu'une question : « quel ennui vient d'arriver, et combien de fois ? ». Il ne
+  // vend rien et n'efface rien : ce qui s'ouvre s'ajoute à l'établi, et la pièce se
+  // paie en masse comme toutes les autres.
+  //
+  // CET ENDROIT EST LE SEUL OÙ UN SEUIL D'OUVERTURE EST ÉCRIT. `DECLICS_DU_GARAGE`
+  // tient les six ennuis, la pièce qui répond à chacun, le nombre d'épisodes
+  // demandé, la ligne que Braise dira. Une promesse le vérifie : `deblocages` ne
+  // s'écrit qu'ici.
+  //
+  // UN ÉPISODE, PAS UNE IMAGE. La parole brute du modèle bascule 763 fois en deux
+  // cents secondes sur la ligne du jeu, médiane 0,05 seconde entre deux bascules
+  // (mesure : tests/outillage/mesurer-garage.mjs, consignée dans
+  // docs/relecture-garage.md). C'est le bercement du point mort, pas une file de
+  // calages. Un compteur qui lirait `situation()` ouvrirait le second cylindre en
+  // trente secondes de tremblage, et « jamais avant que l'engin ait rencontré
+  // l'ennui » voudrait « presque aussitôt le lancement ». Un épisode est donc un
+  // fait **tenu**, en trois mouvements :
+  //
+  //   • l'engin a rencontré le CONTRAIRE du fait (`fait_reprise`) : il est à
+  //     l'écoute. Une machine immobile au lancement n'a pas calé, elle attend ;
+  //   • le fait tient `TENUE_D_UN_EVENEMENT` sans se démentir une seule image ;
+  //   • il se compte UNE FOIS : le bercement qui suit la chute n'est pas une seconde
+  //     chute, il faut que le contraire revienne pour armer la suivante.
+  //
+  // C'est le calme de `CALM_D_UN_TATONNEMENT` (ADR 0011) appliqué à un compteur au
+  // lieu d'une phrase, sur la même horloge : les secondes de la machine, lues à
+  // `engin.tempsEcoule, jamais l'horloge murale du joueur.
+  const TENUE_D_UN_EVENEMENT = 2;
+
+  // Les deux vitesses qui séparent « l'engin roule » de « l'engin est pris », mesurées
+  // sur la ligne du jeu : le bercement d'une machine calée ne dépasse pas 0,05 m/s,
+  // et une machine qui gravit tient 0,6 m/s. `VITESSE_D_ROULER` est à huit fois le
+  // bercement, `VITESSE_PRISE` à deux fois : le tremblage ne franchit aucune des
+  // deux, un mètre parcouru lentement les franchit toutes.
+  const VITESSE_D_ROULER = 0.4;
+  const VITESSE_PRISE = 0.1;
+
+  // À partir de là, une montée est une rampe qui refuse la machine. Mesuré sur la
+  // ligne de la graine : la butte d'ouverture est à 15 %, la rampe du bout à 34 %
+  // (`penteDouce` 0,12-0,16, `penteRaide` 0,28-0,34 dans `ligneDeLaGraine`). Ce qui
+  // arrête la machine à la butte, c'est son point mort ; ce qui l'arrête au bout,
+  // c'est la pente. À 20 % les deux se distinguent, et un même arrêt ne compte pas
+  // deux leçons.
+  // Autre chose, donc autre nombre que `SEUIL_DE_RAMPE` (0,08) : celui-là dit au
+  // dessin quelles bosses valent la peine d'être annoncées à l'avance ; celui-ci dit
+  // si c'est la pente qui refuse la machine.
+  const PENTE_DUNE_RAMPE = 0.2;
+
+  // Le vent d'une vallée, mesuré encore : hors de la bande ventée, le vent de fond
+  // souffle à 0,45 sous les roues ; dans la bande (0,45-0,9 selon la graine), il
+  // monte à 1,00 sous les rafales. À 0,6 la bande se nomme et le fond se tait.
+  const VENT_DUNE_VALLEE = 0.6;
+
+  // Ce qui répond à chaque ennui. `episode` est la définition, en français, relue
+  // par une promesse et imprimée telle quelle au feuillet de relecture : un seuil
+  // qu'on ne peut pas énoncer n'est pas un seuil, c'est un nombre au hasard.
+  //
+  // Les cinq pièces déclarées structurelles par #18 (`vilebrequin`,
+  // `secondes_bielles`, `changement_de_marche`, `transmission`,
+  // `levier_de_detente`) ne sont récompenses nulle part ici : le modèle ne les lit
+  // pas, et une décoration qu'on croit gagnée, l'enfant la voit à la première
+  // expérience — le #8 l'a justement rendue possible. Chaque ligne ouvre une pièce
+  // que le modèle sent ; une promesse lit `modeleVapeur.estStructurelle` pour s'en
+  // assurer.
+  const DECLICS_DU_GARAGE = [
+    {
+      fait: 'calage',
+      nom: 'calage au point mort',
+      seuil: 3,
+      pieces: ['second_cylindre'],
+      parole: 'ouvre_calage',
+      episode: 'l’engin roulait à plus de 0,4 m/s puis se tient sous 0,1 m/s pendant deux secondes, la vapeur demandée et de l’eau dans la chaudière ; il faut avoir repris 0,4 m/s pour qu’un second calage compte',
+      fait_present: (engin) => estPrise(engin) && !estASeche(engin),
+      fait_reprise: (engin) => roule(engin),
+    },
+    {
+      fait: 'rampe',
+      nom: 'rampe refusée',
+      seuil: 1,
+      // Le billet écrivait « l’engrenage de transmission ». Le #18 le déclare
+      // structurel et interdit d’en faire une récompense ; ce qui reprend une rampe
+      // où l’acier glisse, c’est ce qui tire autrement que par l’adhérence des
+      // roues — le cheval, que le modèle sent (`FORCE_CHEVAL`) et qui mange l’avoine
+      // emportée au départ.
+      pieces: ['cheval'],
+      parole: 'ouvre_rampe',
+      episode: 'la machine tient la vapeur ouverte dans une montée de 20 % ou plus sans avancer de plus de 0,1 m/s, pendant deux secondes',
+      fait_present: (engin, sousLaRoue) => estPrise(engin) && !estASeche(engin)
+        && Boolean(sousLaRoue) && sousLaRoue.pente >= PENTE_DUNE_RAMPE,
+      fait_reprise: (engin, sousLaRoue) => roule(engin)
+        || (Boolean(sousLaRoue) && sousLaRoue.pente < PENTE_DUNE_RAMPE),
+    },
+    {
+      fait: 'citerne',
+      nom: 'citerne sèche',
+      seuil: 1,
+      // Le voyageur du billet : le seau qui n’arrive pas à temps. La citerne de plus
+      // est le remède du réservoir vide ; la pompe est le remède de la rivière.
+      // (ADR 0003, amendé.)
+      pieces: ['citerne'],
+      parole: 'ouvre_citerne',
+      episode: 'la citerne tombe à zéro litre et s’y tient deux secondes ; il faut qu’elle ait de l’eau avant qu’une autre soif compte',
+      fait_present: (engin) => engin.citerne <= 0,
+      fait_reprise: (engin) => engin.citerne > 0,
+    },
+    {
+      fait: 'soute',
+      nom: 'soute vide',
+      seuil: 1,
+      pieces: ['soute'],
+      parole: 'ouvre_soute',
+      episode: 'la soute tombe à zéro kilo et s’y tient deux secondes ; il faut qu’elle ait du charbon avant qu’un autre vide compte',
+      // Le contenu du coffre, pas ce que la machine atteint : `charbonDisponible()`
+      // rend 0 quand la soute est démontée (#18), et démonter une pièce n'est pas
+      // rencontrer un vide — ce serait acheter la récompense avec un clic.
+      fait_present: (engin) => engin.soute <= 0,
+      fait_reprise: (engin) => engin.soute > 0,
+    },
+    {
+      fait: 'riviere',
+      nom: 'rivière atteinte',
+      seuil: 1,
+      pieces: ['pompe'],
+      parole: 'ouvre_riviere',
+      episode: 'la rivière passe sous les roues et s’y tient deux secondes',
+      fait_present: (engin, sousLaRoue) => Boolean(sousLaRoue) && sousLaRoue.riviere,
+      fait_reprise: (engin, sousLaRoue) => Boolean(sousLaRoue) && !sousLaRoue.riviere,
+    },
+    {
+      fait: 'vent',
+      nom: 'vallée ventée',
+      seuil: 1,
+      pieces: ['eolienne', 'voile'],
+      parole: 'ouvre_vent',
+      episode: 'le vent monte à 0,6 sous les roues et tient deux secondes',
+      fait_present: (engin, sousLaRoue) => Boolean(sousLaRoue) && sousLaRoue.vent >= VENT_DUNE_VALLEE,
+      fait_reprise: (engin, sousLaRoue) => Boolean(sousLaRoue) && sousLaRoue.vent < VENT_DUNE_VALLEE,
+    },
+  ];
+
+  // Les trois gags ne se débloquent pas, ils sont là « dès la première seconde »
+  // (billet n°10), et leur punition est automatique parce qu'ils pèsent — #18 :
+  // « une remorque n'est que ce qu'elle pèse ». `seuil: 0` : la première image les
+  // ouvre. `parole: null` : Braise ne dit rien, puisqu'ils n'ont rien rencontré (#7,
+  // aucune réplique au lancement).
+  const GAGS_DU_GARAGE = [{
+    fait: 'gags', nom: 'les trois gags', seuil: 0, du_depart: true,
+    pieces: ['eolipyle', 'fusee', 'remorque'], parole: null,
+    episode: 'aucun ennui à rencontrer : ouverts à la première image',
+    fait_present: () => false,
+    fait_reprise: () => false,
+  }];
+
+  // Les six ennuis et les gags : une seule table à parcourir, un seul endroit où
+  // `memo.deblocages` s'écrit.
+  const TABLE_DU_GARAGE = [...DECLICS_DU_GARAGE, ...GAGS_DU_GARAGE];
+
+  // Les mots du fait, en vitesses connues : la table les appelle, elles ne changent
+  // rien au modèle.
+  function roule(engin) {
+    return Math.abs(engin.vitesse()) >= VITESSE_D_ROULER;
+  }
+
+  function estPrise(engin) {
+    // Prise : plus une roue n'avance et la vapeur est demandée. L'enfant qui ferme
+    // le régulateur n'a pas calé, il n'attend plus rien de la machine ; l'enfant qui
+    // ôte les roues non plus — la machine est en l'air, l'arbre y tourne librement
+    // et `vitesse()` y vaut 0 pour toujours (#18). Exiger les roues sous la machine
+    // ferme au passage la ferme à calages qu'ouvrirait un démontage.
+    return Boolean(engin.pieces.roues)
+      && Math.abs(engin.vitesse()) <= VITESSE_PRISE
+      && engin.commandes.regulateur > 0;
+  }
+
+  function estASeche(engin) {
+    // Une machine arrêtée faute d'eau n'est pas prise à son point mort : sa leçon est
+    // la citerne ou la pompe, pas le second cylindre. Priorité de `situation`, qui
+    // nomme « à sec » avant « calée ».
+    return engin.chaudiere.aSec || engin.chaudiere.danger;
+  }
+
+  function suiviDe(g, declic) {
+    if (!g.suivis[declic.fait]) {
+      // `branche` : a rencontré le contraire du fait, donc écoute. Un seuil à zéro
+      // écoute d'office — c'est le cas des gags, ouverts à la première image.
+      g.suivis[declic.fait] = { depuis: null, branche: declic.seuil <= 0, compte: 0, ouvert: false };
+    }
+    return g.suivis[declic.fait];
+  }
+
+  // Un fait tenu, compté une fois. Rend le nombre d'épisodes du fait à cette image.
+  function tiensLeFait(suivi, present, reprise, maintenant) {
+    if (suivi.depuis !== null) {
+      if (!present) {
+        suivi.depuis = null;              // l'image dément la chute : rien n'est tenu
+        return suivi.compte;
+      }
+      if (maintenant - suivi.depuis >= TENUE_D_UN_EVENEMENT) {
+        suivi.compte += 1;
+        suivi.depuis = null;
+        suivi.branche = false;            // le bercement d'après n'est pas un fait neuf
+      }
+      return suivi.compte;
+    }
+    if (reprise) suivi.branche = true;    // le contraire a eu lieu : on est à l'écoute
+    if (suivi.branche && present) suivi.depuis = maintenant;
+    return suivi.compte;
+  }
+
+  // Ce qui vient de s'ouvrir, et la situation qui l'a ouvert. `etatDuJeu` l'appelle
+  // à chaque image. Sans mémoire, rien ne se rappelle et rien ne s'ouvre ; sans
+  // monde, les trois faits du terrain ne se rencontrent pas et les faits de la
+  // machine se comptent quand même.
+  function garage(engin, memo, monde = null) {
+    const g = memo ? memo.garage : null;
+    if (!g || !engin) return { ouverts: [], recents: [], episodes: {} };
+    const maintenant = engin.tempsEcoule;
+    const sousLaRoue = monde ? mondeSousLesRoues(engin, monde) : null;
+    const recents = [];
+    const episodes = {};
+    for (const declic of TABLE_DU_GARAGE) {
+      const suivi = suiviDe(g, declic);
+      const n = tiensLeFait(suivi,
+        declic.fait_present(engin, sousLaRoue),
+        declic.fait_reprise(engin, sousLaRoue),
+        maintenant);
+      episodes[declic.fait] = n;
+      if (n < declic.seuil || suivi.ouvert) continue;
+      suivi.ouvert = true;
+      for (const id of declic.pieces) {
+        if (!memo.deblocages.includes(id)) memo.deblocages.push(id);
+      }
+      recents.push({
+        fait: declic.fait,
+        nom: declic.nom,
+        episodes: n,
+        pieces: [...declic.pieces],
+        // La situation qui l'a ouvert : le mot du modèle à l'image où le fait a tenu.
+        situation: situation(engin, monde),
+        mot: declic.parole ? PAROLES[declic.parole] : '',
+      });
+      // La phrase attend sa place : si Braise est occupée, le fait reste en file et
+      // sera dit dès qu'elle a respiré — un fait neuf ne se perd pas.
+      if (declic.parole) g.aDire = declic.parole;
+    }
+    return { ouverts: [...memo.deblocages], recents, episodes };
   }
 
   const borne01 = (v) => (v < 0 ? 0 : v > 1 ? 1 : v);
@@ -1526,7 +1779,14 @@ const reglesDuJeu = (() => {
   function nouvelleMemo() {
     return {
       refroidissements: {},
+      // Ce que le garage a ouvert, et où il en est de chaque ennui suivi (`garage`,
+      // billet n°10). Une ouverture n'est ni un score ni une monnaie : c'est la
+      // mémoire d'un fait rencontré, et `pieceOuverte` n'est que sa lecture.
       deblocages: [],
+      garage: {
+        suivis: {},          // par fait : { depuis, branche, compte, ouvert }
+        aDire: null,         // la phrase d'une ouverture qui attend son tour
+      },
       meilleurRendement: null,
       braise: {
         muet: false,
@@ -1590,6 +1850,15 @@ const reglesDuJeu = (() => {
     soupape: 'Plus de soupape : rien ne rend la vapeur de trop.',
     roues: 'Plus de roues : l’arbre tourne et rien ne le prend.',
     boite_a_fumee: 'Plus de boîte à fumée : la vapeur usée sort où elle peut.',
+    // Ce que le garage vient d'ouvrir (billet n°10), et le fait rencontré qui l'a
+    // ouvert : la ligne nomme l'ennui d'abord, la pièce ensuite. Le garage ne vend
+    // pas, il ouvre — aucune de ces lignes ne propose un achat (ADR 0006).
+    ouvre_calage: 'Trois fois prise à son point mort : le garage a ouvert un second cylindre, lancé à quatre-vingt-dix degrés du premier.',
+    ouvre_rampe: 'La rampe a refusé la machine et l’acier a glissé : le garage a ouvert le cheval, qui tire autrement que les roues.',
+    ouvre_citerne: 'La citerne s’est vidée sous la machine : le garage en a ouvert une seconde.',
+    ouvre_soute: 'Le foyer a mangé toute la soute : le garage en a ouvert une seconde.',
+    ouvre_riviere: 'La rivière est passée sous les roues : le garage a ouvert la pompe, qui puise où elle trempe.',
+    ouvre_vent: 'Le vent de la vallée a poussé plus fort que la machine : le garage a ouvert l’éolienne et la voile.',
   };
 
   // Le pas de la montre de Braise : le vingtième de seconde, celui que la projection
@@ -1753,13 +2022,21 @@ const reglesDuJeu = (() => {
     // Une seule phrase par bercement : le mot ne se répète qu'après deux secondes
     // sans une bascule, sinon chaque accalmie de trois images la ferait revenir.
     if (maintenant - b.basculeA >= imagesDe(CALM_D_UN_TATONNEMENT)) b.tatonnee = false;
+    // Une ouverture du garage passe après le geste de l'enfant et avant la pièce à
+    // terre : c'est le fait neuf le plus rare du jeu, et elle nomme l'ennui qui vient
+    // d'être rencontré. Elle ne se perd pas : `garage` la met en file et elle n'en
+    // sort qu'une fois dite — refroidie, elle reste et revient à la respiration
+    // suivante, comme la situation nouvelle juste en dessous.
+    const file = memo && memo.garage ? memo.garage.aDire : null;
     let clef = null;
     if (geste !== null) clef = geste;
+    else if (file !== null) clef = file;
     else if (piece !== null) clef = piece;
     else if (hesitation && !b.tatonnee) clef = 'tatonne';
     else if (vue !== b.annoncee) clef = vue;
     if (clef === null) return null;
     const ligne = parole(clef, memo, t === undefined ? engin.tempsEcoule : t);
+    if (clef === file && ligne !== '') memo.garage.aDire = null;
     // Bouton fermé, rien ne se met en file : le fait est regardé et laissé, et elle
     // ne le rattrape pas quand on rouvre. Refroidie, elle garde au contraire le fait
     // neuf et le nomme dès que sa respiration est prise. C'est la différence entre
@@ -1814,6 +2091,11 @@ const reglesDuJeu = (() => {
   // a besoin d'une valeur de plus, c'est ici qu'elle entre — jamais un plongeon
   // dans l'engin.
   function etatDuJeu(engin, monde, memo) {
+    // Le garage regarde la machine avant que l'image se compose : une pièce ouverte
+    // est sur l'établi et sur la machine à l'image suivante, pas à la prochaine
+    // redémarrée (billet n°10). Son retour ne s'affiche pas tel quel : il écrit la
+    // phrase que Braise dira.
+    const ouvert = garage(engin, memo, monde);
     const braise = braiseVue(engin, monde, memo);
     const s = braise.situation;
     return {
@@ -1853,6 +2135,9 @@ const reglesDuJeu = (() => {
       // garde la dernière qu'elle a reçue, une phrase reste posée au lieu de
       // clignoter au rythme d'une mémoire.
       braise: { mot: braise.mot, clef: braise.clef, muet: braise.muet },
+      // Ce qui vient de s'ouvrir et la situation qui l'a ouvert. Le dessin n'en
+      // lit rien : la pièce neuve se voit par `pieces` et par l'établi.
+      garage: ouvert,
     };
   }
 
@@ -1867,6 +2152,8 @@ const reglesDuJeu = (() => {
     pieceNouvelleAterre, PIECES_NOMMEES, PAS_D_ECRAN,
     TENUE_DU_MOT, ENTRE_DEUX, REFROIDISSEMENT, FENETRE_DE_TATONNEMENT,
     BASCULES_POUR_TATONNER, CALM_D_UN_TATONNEMENT,
+    garage, DECLICS_DU_GARAGE, GAGS_DU_GARAGE, TABLE_DU_GARAGE, pieceOuverte,
+    TENUE_D_UN_EVENEMENT, VITESSE_D_ROULER, VITESSE_PRISE, PENTE_DUNE_RAMPE, VENT_DUNE_VALLEE,
     GRAINE_DU_JEU, SEUIL_DE_RAMPE, nombreDeLaGraine, ligneDeLaGraine, mondeDeLaLigne, mondeDeLaGraine,
     mondeSousLesRoues, prochaineRampe,
     soutage, DEBIT_DE_SOUTAGE,
