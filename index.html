@@ -117,6 +117,11 @@ const modeleVapeur = (() => {
   const EAU_PAR_MUID = 0.01;      // fraction du niveau vaporisée par muid
   const SEUIL_EAU_BAS = 0.06;     // en dessous, la tôle travaille et ça ne fait plus de vapeur
   const FUITE_CHAUDIERE = 0.01;   // muids qui s'échappent des joints par seconde
+  // Une chaudière ôtée, ce n'est plus un joint qui fuit : c'est l'enveloppe tout
+  // entière qui manque. La vapeur tenue n'a plus de paroi, elle part à l'air libre
+  // en quelques secondes — assez vite pour que l'élève voie la jauge tomber à
+  // l'image suivante, assez lentement pour que le geste reste comptable.
+  const VAPEUR_A_LAIR_LIBRE = 6;  // muids par bar et par seconde, quand il n'y a plus de paroi
 
   // Cylindre et distribution
   const FORCE_CYLINDRE = 1.2;       // kN·m par bar, surface et rayon ramenés à un seul nombre
@@ -125,6 +130,11 @@ const modeleVapeur = (() => {
   const INDICE_POLYTROPIQUE = 1.3;
   const FUITE_SEEAU = 0.25;       // les segments laissent passer : le ressort s'affaisse
   const FUITE_MACHINE = 0.02;
+  // Le débit d'une distribution absente : sans tiroir, la vapeur vive n'est plus
+  // partagée entre les deux faces, elle traverse et ne pousse rien. Ce n'est plus
+  // un remplissage de cylindre mais un passage grand ouvert, et la chaudière se
+  // vide à ce rythme.
+  const DEBIT_CHEMIN_LIBRE = 0.9; // muids par bar et par seconde, tiroir manquant
   const CONSO_PAR_VOLUME = 0.8;   // muids avalés par volume de cylindre rempli
   const CONDUCTANCE_MAX = 0.6;    // régulateur ouvert au maximum
   const OUVERTURE_MIN = 0.05;
@@ -215,6 +225,46 @@ const modeleVapeur = (() => {
     eolipyle: { nom: 'Éolipyle', famille: 'gag', masse: 0.2 },
     fusee: { nom: 'Fusée', famille: 'gag', masse: 0.3 },
     remorque: { nom: 'Remorque', famille: 'gag', masse: 0.8 },
+  };
+
+  // Les deux colonnes du billet #18. Une pièce du catalogue n'a que deux façons
+  // d'exister dans le modèle :
+  //  - soit le code la nomme (`pieces.<id>`) et la retirer change ce que la machine
+  //    fait : c'est une pièce que le modèle sent ;
+  //  - soit elle n'apporte que sa masse, et elle est écrite ici, avec sa raison.
+  // Une pièce nouvelle qui ne serait dans aucune des deux colonnes fait rougir la
+  // suite : c'est elle qui empêche ce billet de n'avoir servi à rien dans six mois.
+  //
+  // `seDemonte: false` ajoute une seconde parole, pour l'établi : la pièce est
+  // structurelle, elle n'est pas proposée comme un choix. Une pièce à masse seule
+  // dont la masse EST le rôle — une remorque n'est que ce qu'elle pèse — reste un
+  // choix honnête ; une pièce dont le nom promet une mécanique que le modèle n'a
+  // pas ne l'est pas. Le détail famille par famille est à l'ADR 0010.
+  const PIECES_A_MASSE_SEULE = {
+    vilebrequin: {
+      raison: 'la manivelle est la machine elle-même : le couple sort de son bras depuis la première ligne, et la dessiner à part ne la rend pas démontable',
+      seDemonte: false,
+    },
+    secondes_bielles: {
+      raison: 'aucun organe du modèle ne les lit ; tant que la distribution ne demandera pas de seconde bielle, ce n\'est pas une pièce',
+      seDemonte: false,
+    },
+    changement_de_marche: {
+      raison: 'le sens est tenu par machine.marche, une commande du chauffeur, non par une pièce ; le jour où un levier l\'ouvrira, il faudra la nommer ici',
+      seDemonte: false,
+    },
+    transmission: {
+      raison: 'le rapport de l\'arbre aux roues (RAPPORT) est une constante de la machine, pas un engrenage que l\'on monte',
+      seDemonte: false,
+    },
+    levier_de_detente: {
+      raison: 'la détente se règle par le recouvrement du tiroir, un réglage interne à la machine ; aucun levier ne la porte',
+      seDemonte: false,
+    },
+    remorque: {
+      raison: 'une remorque n\'est que ce qu\'elle pèse : sa masse est tout ce que le modèle peut en savoir, et 800 kg de plus dans une rampe se payent',
+      seDemonte: true,
+    },
   };
 
   // Le tiroir, tel qu'il est réglé : sa position, commandée par l'excentrique,
@@ -370,6 +420,20 @@ const modeleVapeur = (() => {
         this.pieces[id] = Math.max(0, (this.pieces[id] || 0) - 1);
         return this;
       },
+      // Le charbon et l'eau sont dans la pièce, pas dans la machine (billet #18,
+      // ADR 0010). Retirer la soute n'efface pas le charbon — le billet #8 a une
+      // promesse écrite pour que démonter ne mange ni ne rende rien d'autre que la
+      // masse de la pièce — mais le charbon reste dans la soute qui n'est plus là.
+      // Ni la machine n'y atteint, ni la pompe n'y entre : la jauge dit « vide »
+      // parce qu'il n'y a plus de soute, pas parce qu'elle est à sec. La pièce
+      // remontée rend ce qu'elle contenait, et c'est ce qui évite le piège du
+      // démontage irréversible tant que le charbonnage du #9 n'existe pas.
+      charbonDisponible() {
+        return this.pieces.soute ? this.soute : 0;
+      },
+      eauDisponible() {
+        return this.pieces.citerne ? this.citerne : 0;
+      },
       // Le changement de marche renvoie l'excentrique de l'autre côté : le couple
       // change de signe, et la machine repart en sens inverse.
       avanceEffective() {
@@ -396,6 +460,12 @@ const modeleVapeur = (() => {
         return i + this.masseTotale() * (RAYON_ROUE / RAPPORT) ** 2;
       },
       vitesse() {
+        // La vitesse dite est celle des roues : l'arbre rapporté au rayon
+        // (`RAYON_ROUE / RAPPORT`). Le billet #18 écrit ce choix au lieu de le
+        // laisser deviner : sans roues il n'y a pas de vitesse des roues, donc pas
+        // de vitesse du tout — pas une vitesse de manivelle déguisée en vitesse de
+        // voyage. L'arbre peut tourner à vide dans le ciel, l'engin ne bouge pas.
+        if (!this.pieces.roues) return 0;
         return this.machine.vitesseAngulaire * (RAYON_ROUE / RAPPORT) * (this.machine.patine ? 0.5 : 1);
       },
       mouvement() {
@@ -480,28 +550,45 @@ const modeleVapeur = (() => {
     const chaudiere = engin.chaudiere;
     const machine = engin.machine;
     const aLaMachine = Boolean(engin.pieces.cylindre);
+    // Le tiroir EST la distribution : il décide quelle lumière reçoit la vapeur
+    // vive. Ôté, les deux glaces l'appellent en même temps et aucune ne la garde.
+    const distribue = Boolean(engin.pieces.tiroir);
+    // La crosse et la bielle portent le travail du piston à la manivelle. Ôtées, le
+    // cylindre travaille pour personne : il respire tant que l'arbre tourne et ne
+    // rend plus rien. Ce que la vapeur devient alors est écrit à l'ADR 0010 :
+    // dépensé, pas perdu — la facture reste, le trajet non.
+    const transmet = distribue && Boolean(engin.pieces.crosse) && Boolean(engin.pieces.bielle);
 
     // 1. Le feu. Son intensité dépend du tirage, donc de la vapeur usée qui passe.
     let coupleInjecteur = 0;
     const pression0 = chaudiere.pression;
     const tirage = appelDair({ vapeurEchappee: engin.fluxEchappe() });
-    const peutBruler = engin.pieces.foyer && engin.soute > 0 && c.feu > 0;
-    const puissanceFoyer = peutBruler ? c.feu * PUISSANCE_FOYER * tirage : 0;
+    const aUneChaudiere = Boolean(engin.pieces.chaudiere);
+    // Le charbon se prend dans la soute : pas de soute, plus de quoi nourrir la
+    // grille, même si le charbon existe encore quelque part.
+    const charbon = engin.charbonDisponible();
+    const peutBruler = engin.pieces.foyer && charbon > 0 && c.feu > 0;
+    // Le feu brûle ce qui reste sur la grille, chaudière ou pas : c'est très bien
+    // ainsi et c'est la facture que l'élève doit voir. Ce qui manque sans la
+    // chaudière, ce n'est pas la flamme, c'est ce qui en sort — plus de paroi pour
+    // tenir la vapeur, donc plus de vapeur du tout. L'eau non plus n'a plus où
+    // entrer : `vapeurCreee` est à zéro, et l'injecteur ne pousse rien.
+    const puissanceFoyer = peutBruler && aUneChaudiere ? c.feu * PUISSANCE_FOYER * tirage : 0;
     chaudiere.aSec = chaudiere.niveauEau <= SEUIL_EAU_BAS;
     const eauDispo = chaudiere.aSec ? Math.max(0, chaudiere.niveauEau / SEUIL_EAU_BAS) : 1;
     const vapeurCreee = puissanceFoyer * eauDispo * dt;
     // L'eau bouillie doit être remplacée, et elle entre dans une chaudière sous
     // pression : l'injecteur la pousse, et ça mange une part du travail de la
     // machine. Une citerne vide, c'est la machine qui s'arrête — le soutage.
-    const aInjecter = Math.min(vapeurCreee, engin.citerne);
+    const aInjecter = Math.min(vapeurCreee, engin.eauDisponible());
     engin.citerne -= aInjecter;
     engin.eauPompee += aInjecter;
     if (aInjecter > 0) coupleInjecteur = (K_INJECTEUR * aInjecter * (pression0 - PRESSION_AMBIANTE)) / dt;
     chaudiere.niveauEau = clamp01(chaudiere.niveauEau + (aInjecter - vapeurCreee) * EAU_PAR_MUID);
     if (peutBruler) {
-      const charbon = Math.min(engin.soute, c.feu * CHARBON_PAR_SECOND * dt);
-      engin.soute -= charbon;
-      engin.charbonBrule += charbon;
+      const brule = Math.min(charbon, c.feu * CHARBON_PAR_SECOND * dt);
+      engin.soute -= brule;
+      engin.charbonBrule += brule;
     }
 
     // 2. Les deux cylindres, la distribution, et ce qu'ils avalent.
@@ -518,9 +605,13 @@ const modeleVapeur = (() => {
       : null;
 
     const remplissage = (premiers ? premiers.remplissage : 0) + (seconds ? seconds.remplissage : 0);
-    const demande = aLaMachine
-      ? (remplissage / dt) * CONSO_PAR_VOLUME + FUITE_MACHINE * (pression - PRESSION_AMBIANTE)
-      : 0;
+    // Ce que la machine demande à boire. Sans tiroir, ce n'est plus un remplissage
+    // qui suit le volume du cylindre : c'est un passage grand ouvert qui suit la
+    // pression, et la chaudière se vide à ce rythme sans que rien ne tourne.
+    const demande = !aLaMachine ? 0
+      : distribue
+        ? (remplissage / dt) * CONSO_PAR_VOLUME + FUITE_MACHINE * (pression - PRESSION_AMBIANTE)
+        : DEBIT_CHEMIN_LIBRE * (pression - PRESSION_AMBIANTE);
     const eolipyle = engin.pieces.eolipyle ? CONSO_EOLIPYLE * clamp01(c.eolipyle) * (pression - PRESSION_AMBIANTE) : 0;
     // Le régulateur est un passage étroit entre la chaudière et le cylindre : une
     // résistance, pas un compteur. Tout ce que le cylindre demande doit franchir
@@ -562,10 +653,10 @@ const modeleVapeur = (() => {
 
     // 3. Les sources de mouvement, la machine comprise.
     let couple = 0;
-    if (premiers) {
+    if (premiers && transmet) {
       couple += coupleMachine({ angle: machine.angle, pressionAvant: premiers.pAvant, pressionArriere: premiers.pArriere });
     }
-    if (seconds) {
+    if (seconds && transmet) {
       couple += coupleMachine({
         angle: machine.angle + Math.PI / 2,
         pressionAvant: seconds.pAvant,
@@ -625,10 +716,19 @@ const modeleVapeur = (() => {
     }
 
     // 5. Ce que le sol et la gravité reprennent.
+    // Le sol ne se tient que par les roues : ce sont elles qui pressent la machine
+    // contre le rail et qui lui rendent sa poussée, et la vitesse dite est la leur
+    // (`vitesse`). Roues ôtées, la transmission s'arrête en l'air : rien n'accroche,
+    // rien ne retient, et le relief ne peut plus rien reprendre non plus — décision
+    // assumée à l'ADR 0010 plutôt qu'un engin sans roues qui monterait les rampes.
+    const aDesRoues = Boolean(engin.pieces.roues);
     const sens = omega !== 0 ? Math.sign(omega) : Math.sign(couple);
-    const coupleSol = (forceDuSol(engin, monde, sens || 1) * RAYON_ROUE) / RAPPORT;
-    const adhesion = (ADHERENCE * engin.masseTotale() * GRAVITE * POIDS_MOTEUR * RAYON_ROUE) / RAPPORT;
-    machine.patine = Math.abs(coupleSol) > adhesion;
+    const coupleSol = aDesRoues ? (forceDuSol(engin, monde, sens || 1) * RAYON_ROUE) / RAPPORT : 0;
+    const adhesion = aDesRoues ? (ADHERENCE * engin.masseTotale() * GRAVITE * POIDS_MOTEUR * RAYON_ROUE) / RAPPORT : 0;
+    // Sans roues, l'arbre lancé ne trouve plus personne pour le retenir : c'est une
+    // roue libre, pas une adhérence. Le mot est dit à l'écran, et l'engrenage qui
+    // file dans le vide est le même spectacle qu'un rail qui glisse.
+    machine.patine = aDesRoues ? Math.abs(coupleSol) > adhesion : engin.mouvement();
     const coupleEffectifSol = machine.patine ? Math.sign(coupleSol) * adhesion : coupleSol;
     const coupleChassis = (forceChassis * RAYON_ROUE) / RAPPORT;
 
@@ -662,7 +762,8 @@ const modeleVapeur = (() => {
     engin.tempsEcoule += dt;
 
     // L'eau ne part qu'une fois : elle manque au niveau dès qu'elle est vaporisée.
-    chaudiere.pression += (vapeurCreee - (prise + FUITE_CHAUDIERE * (pression - PRESSION_AMBIANTE)) * dt) / CAPACITE_CHAUDIERE;
+    const fuiteChaudiere = (aUneChaudiere ? FUITE_CHAUDIERE : VAPEUR_A_LAIR_LIBRE) * (pression - PRESSION_AMBIANTE);
+    chaudiere.pression += (vapeurCreee - (prise + fuiteChaudiere) * dt) / CAPACITE_CHAUDIERE;
     // La vapeur qu'on ne soutire pas s'enfuit par la soupape : elle a coûté du
     // charbon et n'a rien fait tourner. C'est toute la conduite sobre du jeu.
     const plafond = engin.pieces.soupape ? PRESSION_SOUPAPE : PRESSION_MAX;
