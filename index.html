@@ -885,6 +885,16 @@ const reglesDuJeu = (() => {
     return { ...engin.pieces };
   }
 
+  // L'établi : le tiroir du garage, en une ligne par pièce de l'engin. Le nom est
+  // le mot vrai du métier, celui du catalogue et du glossaire — jamais l'identifiant.
+  function piecesDeLetabli(engin) {
+    return engin.ordre.map((id) => ({
+      id,
+      nom: modeleVapeur.CATALOGUE[id].nom,
+      nombre: engin.pieces[id] || 0,
+    }));
+  }
+
   const borne01 = (v) => (v < 0 ? 0 : v > 1 ? 1 : v);
 
   // La fumée de la cheminée dit le feu : ce que le chauffeur a réglé, et ce que
@@ -1202,6 +1212,7 @@ const reglesDuJeu = (() => {
       machine: etatDeLaMachine(engin),
       distribution: etatDeLaDistribution(engin),
       pieces: piecesPortees(engin),
+      etabli: { pieces: piecesDeLetabli(engin) },
       fumee: fumeeDite(engin),
       sol: solVu(engin, monde),
       chaudiere: chaudiereVue(engin),

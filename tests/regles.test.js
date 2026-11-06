@@ -1110,3 +1110,29 @@ test('la ligne tient dans ce que la machine emporte : un plein d’eau la mène 
     assert.ok(engin.soute > 200, ou(`le charbon borne avant l'eau : ${engin.soute.toFixed(0)} kg restants`));
   }
 });
+
+// --- Ticket 8 · l'établi : brancher, démonter, compter ---------------------
+
+// L'établi est le tiroir du garage : il liste les pièces que l'engin porte, avec
+// leur nombre, et se pilote d'un clic. Rien ne s'achète — une pièce se paie en
+// masse et en charbon (ADR 0004, ADR 0006).
+
+test("l'établi liste les pièces de l'engin avec leur nombre", () => {
+  const engin = M.nouvelEngin(R.PIECES_DE_BASE);
+  const rangs = R.etatDuJeu(engin, plaine()).etabli.pieces;
+
+  assert.ok(Array.isArray(rangs) && rangs.length > 0, "l'établi ne liste rien");
+  const noms = new Set();
+  for (const id of R.PIECES_DE_BASE) {
+    const rang = rangs.find((r) => r.id === id);
+    assert.ok(rang, `l'établi passe la pièce « ${id} » de l'engin d'ouverture`);
+    assert.equal(rang.nombre, 1, `« ${id} » : l'engin d'ouverture porte un exemplaire, l'établi en dit ${rang.nombre}`);
+    assert.ok(typeof rang.nom === 'string' && rang.nom.trim().length > 0, `« ${id} » : l'établi ne nomme pas la pièce`);
+    assert.ok(!noms.has(rang.nom), `deux pièces portent le même nom à l'établi : « ${rang.nom} »`);
+    noms.add(rang.nom);
+  }
+
+  // Le mot vrai du métier, pas l'identifiant : un enfant lit « Citerne ».
+  const citerne = rangs.find((r) => r.id === 'citerne');
+  assert.equal(citerne.nom, 'Citerne', "l'établi n'emploie pas le mot du glossaire");
+});
