@@ -1095,23 +1095,33 @@ const reglesDuJeu = (() => {
   // seconde citerne fait passer « 84 % — pleine » à « 42 % — basse » à litres
   // constants, et l'enfant lit que remplir a vidé. Le nombre ne bouge pas quand on
   // ajoute de la capacité, le mot si ; ils se lisent ensemble.
-  function reservoirVue(niveau, capacite) {
+  // L'unité d'un réservoir n'est pas un détail de mise en page, c'est une grandeur.
+  // La soute contient du charbon pesé en kilos — `DEBIT_DE_SOUTAGE` soutait des
+  // kilos par seconde de temps machine, `engin.soute` se compare en kilos à la
+  // capacité du catalogue ; la citerne contient de l'eau mesurée en litres. Les
+  // deux réservoirs partageaient un « L » écrit en dur par la projection : l'écran
+  // faisait lire « 289 L » à une soute de charbon (billet #20). Le mot vient donc de
+  // l'état du jeu, comme le reste : la projection l'écrit, elle ne le devine pas.
+  const UNITES_DE_RESERVOIR = { soute: 'kg', citerne: 'L' };
+
+  function reservoirVue(niveau, capacite, unite) {
     const plein = capacite > 0 ? borne01(niveau / capacite) : 0;
     const note = MOTS_DE_NIVEAU.find((m) => plein >= m.aPartirDe);
-    const litres = Math.max(0, Math.round(niveau));
+    const contenu = Math.max(0, Math.round(niveau));
     return {
       niveau,
       capacite,
       plein,
+      unite,
       mot: note.mots,
-      chiffres: litres.toLocaleString('fr-FR'),
+      chiffres: contenu.toLocaleString('fr-FR'),
     };
   }
 
   function reservoirsVus(engin) {
     return {
-      soute: reservoirVue(engin.soute, engin.capacite('soute')),
-      citerne: reservoirVue(engin.citerne, engin.capacite('citerne')),
+      soute: reservoirVue(engin.soute, engin.capacite('soute'), UNITES_DE_RESERVOIR.soute),
+      citerne: reservoirVue(engin.citerne, engin.capacite('citerne'), UNITES_DE_RESERVOIR.citerne),
     };
   }
 
@@ -2205,7 +2215,7 @@ const reglesDuJeu = (() => {
     TENUE_D_UN_EVENEMENT, VITESSE_D_ROULER, VITESSE_PRISE, PENTE_DUNE_RAMPE, VENT_DUNE_VALLEE,
     GRAINE_DU_JEU, SEUIL_DE_RAMPE, nombreDeLaGraine, ligneDeLaGraine, mondeDeLaLigne, mondeDeLaGraine,
     mondeSousLesRoues, prochaineRampe,
-    soutage, DEBIT_DE_SOUTAGE,
+    soutage, DEBIT_DE_SOUTAGE, UNITES_DE_RESERVOIR,
   };
   return reglesDuJeu;
 })();
@@ -3103,7 +3113,7 @@ const reglesDuJeu = (() => {
   // ajoute de la capacité, et le mot du chauffeur qui bouge, lus ensemble (billet #7).
   // Les deux viennent de l'état du jeu, jamais d'un compteur d'écran.
   function motsDeNiveau(reservoir) {
-    return `${reservoir.chiffres} L — ${reservoir.mot}`;
+    return `${reservoir.chiffres} ${reservoir.unite} — ${reservoir.mot}`;
   }
   // Le rendement se refuse : tant que le charbon dort, l'écran montre un tiret et
   // le mot qui dit l'attente — jamais un zéro, jamais un « NaN ». Quand la machine
