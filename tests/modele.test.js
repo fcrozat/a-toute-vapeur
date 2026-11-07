@@ -33,19 +33,52 @@ const MACHINE = [
   'regulateur', 'crosse', 'bielle', 'roues', 'boite_a_fumee', 'soupape',
 ];
 
+// Le décor des réservoirs, écrit une fois depuis le billet #19 : les réservoirs sont
+// pleins **de ce que leur contenant peut tenir**. Avant le correctif, les machines de
+// test portaient `4000` dans une soute de 300 kg et une citerne de 240 L. Le chiffre
+// était inoffensif tant que la balance ignorait la réserve ; il ne l'est plus dès que
+// le contenu pèse, parce qu'il faisait annoncer 11,24 t à une machine de 3,78 t et
+// qu'aucune soute du catalogue ne peut contenir quatre tonnes de charbon. Ce n'est
+// pas une assertion qui gênait : c'est un décor qui montait un engin impossible.
+// L'intention reste la même — la faim du foyer n'est pas le sujet : 300 kg et 240 L
+// tiennent beaucoup plus longtemps que la plus longue des promesses ci-dessous.
+const pleins = (engin) => {
+  engin.soute = engin.capacite('soute');
+  engin.citerne = engin.capacite('citerne');
+  return engin;
+};
+
+// La corvée d'eau et le charbonnage permanents. Un plein de citerne — 240 litres —
+// tient environ deux minutes au feu d'enfer (mesuré billet #6 : la ligne de jeu est à
+// sec à 154 s de temps machine, graine 1882), et ce fichier contient des promesses qui
+// tournent sur quatre minutes de temps machine pour observer autre chose que la soif.
+// Là où la soif n'est pas le sujet, le décor la suspend : la réserve est tenue au
+// plein **de ce que le contenant monté peut tenir**. C'est exactement ce que racontait
+// le `4000` d'avant, à une différence près et qui est tout le billet #19 : ce plein-là
+// pèse son poids juste, 300 kg et 240 kg, pas quatre tonnes.
+//
+// Rien n'est jamais versé dans un contenant qui n'est pas là : `debrancher` une soute
+// laisse la jauge à zéro et le foyer s'éteindre, et deux promesses veillent — l'une
+// que le geste n'efface rien, l'autre que la machine morte ne se ravitaille pas toute
+// seule. Une promesse qui mesure la réserve qui descend ne demande pas ce décor-là.
+function ravitailler(engin) {
+  if (engin.pieces.soute) engin.soute = engin.capacite('soute');
+  if (engin.pieces.citerne) engin.citerne = engin.capacite('citerne');
+}
+
 function machineVapeur({ pieces = [], feu = 1, regulateur = 1, recouvrement = null } = {}) {
   const engin = M.nouvelEngin([...MACHINE, ...pieces]);
-  engin.soute = 4000;   // on teste la physique, pas la faim du foyer
-  engin.citerne = 4000;
+  pleins(engin);
   engin.commandes.feu = feu;
   engin.commandes.regulateur = regulateur;
   if (recouvrement !== null) engin.machine.recouvrement = recouvrement;
   return engin;
 }
 
-function rouler(engin, monde, { duree, distanceCible = null } = {}) {
+function rouler(engin, monde, { duree, distanceCible = null, ravitaille = true } = {}) {
   let t = 0;
   while (t < duree) {
+    if (ravitaille) ravitailler(engin);
     M.pasDeTemps(engin, monde, PAS);
     t += PAS;
     if (distanceCible !== null && Math.abs(engin.distance) >= distanceCible) break;
@@ -55,11 +88,11 @@ function rouler(engin, monde, { duree, distanceCible = null } = {}) {
 
 // La chauffe, puis le coup de barre, la machine restant dans le meme monde.
 // L'ordre compte : aucune machine ne demarre sans élan, c'est deja une lecon.
-function demarrer(engin, monde, { chauffe = CHAUFFE, elan = 0.4, suite = 40 } = {}) {
-  rouler(engin, monde, { duree: chauffe });
+function demarrer(engin, monde, { chauffe = CHAUFFE, elan = 0.4, suite = 40, ravitaille = true } = {}) {
+  rouler(engin, monde, { duree: chauffe, ravitaille });
   assert.ok(engin.chaudiere.pression > 4, `la chaudière n'a pas monté en pression pendant la chauffe (${engin.chaudiere.pression.toFixed(1)})`);
   engin.pousser(elan);
-  rouler(engin, monde, { duree: suite });
+  rouler(engin, monde, { duree: suite, ravitaille });
   return engin;
 }
 
@@ -155,8 +188,7 @@ test("sans avance à l'admission, la machine retombe à son point mort", () => {
   // rouvre la vapeur qu'une fois le piston lancé. Un élan ne suffit plus, et la
   // vapeur scellée retient la machine. C'est une piece du garage, pas un reglage.
   const sansExcentrique = M.nouvelEngin(MACHINE.filter((id) => id !== 'excentrique'));
-  sansExcentrique.soute = 4000;
-  sansExcentrique.citerne = 4000;
+  pleins(sansExcentrique);
   sansExcentrique.commandes.feu = 1;
   sansExcentrique.commandes.regulateur = 1;
   demarrer(sansExcentrique, plaine());
@@ -274,8 +306,7 @@ test('la vapeur usée chassée par la tuyère active le feu', () => {
 
   const avecBoite = machineVapeur();
   const sansBoite = M.nouvelEngin(MACHINE.filter((id) => id !== 'boite_a_fumee'));
-  sansBoite.soute = 4000;
-  sansBoite.citerne = 4000;
+  pleins(sansBoite);
   sansBoite.commandes.feu = 1;
   sansBoite.commandes.regulateur = 1;
   for (const engin of [avecBoite, sansBoite]) {
@@ -481,7 +512,14 @@ test('ce qui retient la machine ne la pousse pas', () => {
 // consultait que le foyer, le cylindre, la boîte à fumée, l'excentrique, le régulateur,
 // la tuyère et la soupape. Les promesses qui suivent tiennent la réparation pièce par
 // pièce, et la dernière tient la règle qui empêche le trou de se rouvrir.
-const FEU_DU_LEVER = 0.8;
+// Le feu du lever de rideau était à 0,8. Il est au maximum depuis le billet #19, et
+// ce n'est pas une préférence : mesuré sur le plat, une machine pleine de 3,78 t
+// plafonne à 1,35 m/s moyen à 80 % du feu et n'atteint donc plus jamais les 1,5 m/s
+// que cette fenêtre prend comme point de départ, alors qu'elle les dépasse à feu
+// d'enfer. Ce que la mesure dit vraiment est écrit au rapport : la pleine réserve
+// coûte environ un sixième de la vitesse de croisière. Le décor change de feu, pas de
+// seuil — la promesse ci-dessous reste écrite à 1,5 m/s.
+const FEU_DU_LEVER = 1;
 const VITESSE_DU_LEVER = 1.5;
 const FENETRE = 20;
 
@@ -682,8 +720,7 @@ test('le régulateur ôté laisse la vapeur grande ouverte', () => {
   // le seul qui n'invente pas un état que le modèle ne sait pas tenir.
   const chemin = (retirer, regulateur) => {
     const engin = M.nouvelEngin(retirer ? MACHINE.filter((id) => id !== retirer) : MACHINE);
-    engin.soute = 4000;
-    engin.citerne = 4000;
+    pleins(engin);
     engin.commandes.feu = 1;
     engin.commandes.regulateur = regulateur;
     rouler(engin, plaine(), { duree: CHAUFFE });
