@@ -296,7 +296,14 @@ test('l’état du jeu dit quelles pièces portent l’engin', () => {
   const seule = R.etatDuJeu(machineVapeur(), monde).pieces;
   assert.equal(seule.cylindre, 1, 'le dessin ne voit pas le cylindre');
   assert.equal(seule.excentrique, 1, 'le dessin ne voit pas l’excentrique');
-  assert.equal(seule.second_cylindre, undefined, 'le dessin invente un second cylindre');
+  // Une pièce que la machine ne porte pas vaut zéro, et non plus une clef absente :
+  // depuis le billet n°10 l'état répond de tout le catalogue, et le dessin n'a rien à
+  // deviner. L'intention est la même — rien de ce qui n'est pas monté ne se dessine —,
+  // seulement elle se lit maintenant dans un nombre au lieu d'un trou.
+  assert.equal(seule.second_cylindre, 0, 'le dessin invente un second cylindre');
+  assert.equal(seule.pompe, 0, 'le dessin invente une pompe');
+  assert.equal(Object.keys(seule).length, Object.keys(M.CATALOGUE).length,
+    'l’état du jeu ne répond pas du catalogue entier');
 
   const double = R.etatDuJeu(machineVapeur({ pieces: ['second_cylindre'] }), monde).pieces;
   assert.equal(double.second_cylindre, 1, 'un second cylindre branché ne passe pas à l’écran');
@@ -883,10 +890,16 @@ test('la mémoire du jeu s’ouvre vide', () => {
   // Les trois cases vides d'avant, et depuis le billet #7 la mémoire de Braise, qui
   // s'ouvre vide elle aussi : rien de dit, rien de refroidi, aucun mot retenu. Le
   // détail de ses cases est promis plus bas, là où sa parole se décide.
-  const { braise, ...leReste } = memo;
-  assert.deepEqual(leReste, { refroidissements: {}, deblocages: [], meilleurRendement: null });
+  const { braise, garage, ...leReste } = memo;
+  assert.deepEqual(leReste, {
+    refroidissements: {}, deblocages: [], meilleurRendement: null,
+  });
   assert.equal(Object.keys(memo.refroidissements).length, 0, 'la mémoire porte déjà des refroidissements');
   assert.equal(memo.deblocages.length, 0, 'la mémoire débloque déjà des pièces');
+  // Le garage du billet #10 s'ouvre vide lui aussi : rien suivi, rien compté, aucune
+  // phrase en file. Une ouverture est un fait rencontré, pas un état de départ.
+  assert.deepEqual(garage.suivis, {}, 'le garage suit déjà des faits');
+  assert.equal(garage.aDire, null, 'le garage a déjà une phrase à dire');
   assert.equal(memo.meilleurRendement, null, 'la mémoire connaît déjà un score');
   assert.equal(braise.situationPrecedente, null, 'la mémoire compare déjà des situations');
   assert.equal(Object.keys(braise.dites).length, 0, 'la mémoire a déjà un temps de refroidissement pris');
@@ -1157,18 +1170,28 @@ test("l'établi liste les pièces de l'engin avec leur nombre", () => {
   assert.equal(citerne.nom, 'Citerne', "l'établi n'emploie pas le mot du glossaire");
 });
 
-// Le chiffre du billet, mesuré et non réparé : vingt-huit pièces au catalogue,
-// treize presentees a qui ouvre le jeu. Les quinze autres sont verrouillees, donc
-// absentes du tiroir — ni grisées, ni expliquées, ni nommées (ADR 0006).
+// Le chiffre du billet, mesuré et non réparé : vingt-huit pièces au catalogue, treize
+// presentees a qui ouvre le jeu. Le billet #10 y ajoute les trois gags, disponibles
+// dès la première seconde sans aucun ennui rencontré : ils sont donc de ces lignes
+// dès la première image. Les douze autres restent verrouillées, donc absentes du
+// tiroir — ni grisées, ni expliquées, ni nommées (ADR 0006).
 test('sur une partie neuve, l’établi présente treize pièces sur vingt-huit', () => {
   const catalogue = Object.keys(M.CATALOGUE);
   assert.equal(catalogue.length, 28, 'le catalogue ne compte plus vingt-huit pièces : le compte du billet est à reprendre');
 
   const engin = M.nouvelEngin(R.PIECES_DE_BASE);
-  const rangs = R.etatDuJeu(engin, plaine(), R.nouvelleMemo()).etabli.pieces;
-  assert.equal(rangs.length, 13, `l'établi d'une partie neuve présente ${rangs.length} pièces, et non treize`);
+  const memo = R.nouvelleMemo();
+  const rangs = R.etatDuJeu(engin, plaine(), memo).etabli.pieces;
+  assert.equal(rangs.length, 13 + R.GAGS_DU_GARAGE[0].pieces.length,
+    `l'établi d'une partie neuve présente ${rangs.length} pièces : les treize de l'engin d'ouverture plus les gags du billet #10`);
+  for (const id of R.PIECES_DE_BASE) {
+    assert.ok(rangs.some((r) => r.id === id), `l'établi a oublié la pièce de l'engin d'ouverture « ${id} »`);
+  }
 
-  for (const id of catalogue.filter((id) => !R.PIECES_DE_BASE.includes(id))) {
+  const fermees = catalogue.filter((id) => !R.PIECES_DE_BASE.includes(id)
+    && !R.GAGS_DU_GARAGE[0].pieces.includes(id));
+  assert.equal(fermees.length, 12, 'le compte des pièces verrouillées a bougé : le billet #10 est à relire');
+  for (const id of fermees) {
     assert.ok(!rangs.some((r) => r.id === id), `la pièce verrouillée « ${id} » est nommée à l'établi`);
     assert.ok(!rangs.some((r) => r.nom === M.CATALOGUE[id].nom), `la pièce verrouillée « ${id} » est nommée à l'établi sous son mot du métier`);
   }
@@ -2142,4 +2165,410 @@ test('la projection écoute Braise sans rien décider', () => {
   for (const [clef, ligne] of Object.entries(R.PAROLES)) {
     assert.equal(source.includes(ligne), false, `la parole « ${clef} » est dupliquée dans la projection`);
   }
+});
+
+
+// --- Le garage s'agrandit par le problème (billet n°10) ---------------------
+//
+// Une pièce nouvelle vient de l'ennui rencontré, jamais d'un niveau franchi ni d'une
+// monnaie comptée (ADR 0006). Ce qui suit est donc écrit à l'envers d'une récompense :
+// chaque promesse interdit quelque chose d'ouvrir. Les seuils ne sont pas redits ici —
+// ils se lisent dans `TABLE_DU_GARAGE`, et une promesse vérifie qu'il n'y a pas
+// d'autre endroit où les écrire.
+//
+// Le geste qui cale la machine est celui de l'écran, et lui seul : le robinet avare
+// mais ouvert (`estPrise` veut la vapeur demandée), la barre pour reprendre
+// `VITESSE_D_ROULER` entre deux chutes. Un feu mesuré, pas le feu d'enfer : à 11 bars
+// la vapeur comprimée la retient si bien qu'elle ne repart plus à la troisième reprise
+// (mesuré, consigné dans `docs/relecture-billet-10.md`). Le modèle n'est pas à ce
+// billet : on ne le tord pas, on joue avec ce qu'il rend.
+
+const GAGS = ['eolipyle', 'fusee', 'remorque'];
+const FEU_MESURE = 0.5;
+const ROBINET_AVARE = 0.1;   // la vapeur est encore demandée : la fermer ne cale pas
+
+const roule = (engin) => Math.abs(engin.vitesse()) >= R.VITESSE_D_ROULER;
+
+// L'image du jeu, telle que la projection la compose : la physique avance, puis les
+// règles regardent. C'est `etatDuJeu` qui fait tourner `garage` — mener la machine
+// sans le consulter ne compte donc aucun fait.
+function jouer(engin, monde, memo, secondes, { sur = null, jusquA = null } = {}) {
+  let dernier = null;
+  for (let t = 0; t < secondes; t += PAS) {
+    R.passerLImage(engin, monde, { duree: PAS });
+    dernier = R.etatDuJeu(engin, monde, memo);
+    if (sur) sur(dernier, engin);
+    if (jusquA && jusquA(dernier, engin)) break;
+  }
+  return dernier;
+}
+
+// Ce qu'on regarde de l'écran pendant qu'on joue : ce qui s'ouvre, et ce qu'elle dit.
+function ecoute() {
+  const ouvertures = [];
+  const paroles = [];
+  return {
+    ouvertures,
+    paroles,
+    sur: (etat, engin) => {
+      for (const neuf of etat.garage.recents) ouvertures.push({ ...neuf, machine: engin.tempsEcoule });
+      if (etat.braise.clef) paroles.push(etat.braise.clef);
+    },
+  };
+}
+
+// Une chute au point mort, et une seule : elle reprend d'abord assez de vitesse pour
+// armer le compteur, puis on avare le robinet sans le fermer et on la laisse se tenir.
+function menerUnCalage(engin, monde, memo, attendu, sur) {
+  engin.commandes.regulateur = 1;
+  for (let i = 0; i < 12 && !roule(engin); i += 1) {
+    R.coupDeBarre(engin, memo);
+    jouer(engin, monde, memo, 1, { sur });
+  }
+  assert.ok(roule(engin), `la machine n'a pas repris ${R.VITESSE_D_ROULER} m/s : rien n'arme le calage n°${attendu}`);
+  engin.commandes.regulateur = ROBINET_AVARE;
+  const etat = jouer(engin, monde, memo, 60, { sur, jusquA: (e) => e.garage.episodes.calage >= attendu });
+  assert.ok(etat && etat.garage.episodes.calage >= attendu,
+    `le calage n°${attendu} n'arrive pas : la machine ne s'est pas tenue deux secondes au point mort`);
+  return etat;
+}
+
+// L'engin du billet, chaud et les pleins faits : on teste ce qui s'ouvre, pas la faim
+// du foyer. Il sort de la chauffe sans avoir calé — le lancement n'est pas un fait.
+function enginDeChauffe(monde, { feu = FEU_MESURE } = {}) {
+  const engin = machineVapeur({ feu });
+  jouer(engin, monde, R.nouvelleMemo(), CHAUFFE);
+  return engin;
+}
+
+test('les trois gags sont sur l’établi à la première image, et Braise ne dit rien', () => {
+  // Leur punition est automatique : ils pèsent, ils ne se débloquent pas. `seuil: 0`
+  // veut dire « à la première image », pas « à la première minute ».
+  const monde = plaine();
+  const memo = R.nouvelleMemo();
+  const engin = M.nouvelEngin(R.PIECES_DE_BASE);
+  const etat = R.etatDuJeu(engin, monde, memo);
+
+  assert.deepEqual(memo.deblocages, GAGS, 'à la première image, l’ouverture du garage n’est pas exactement les trois gags');
+  assert.deepEqual(etat.garage.ouverts, GAGS);
+  for (const id of GAGS) {
+    const rang = etat.etabli.pieces.find((r) => r.id === id);
+    assert.ok(rang, `« ${id} » n’est pas sur l’établi au premier lancement`);
+    assert.equal(rang.nombre, 0, `« ${id} » est déjà montée au premier lancement`);
+    assert.equal(rang.peutBrancher, true, `« ${id} » est sur l’établi sans se brancher`);
+  }
+  assert.equal(etat.braise.mot, '', 'Braise parle au lancement : rien n’a encore été rencontré');
+  assert.equal(etat.garage.recents.length, GAGS.length ? 1 : 0,
+    'les gags s’annoncent un par un : trois phrases pour une seule image');
+});
+
+test('trois calages au point mort ouvrent le second cylindre, et rien avant le troisième', () => {
+  const monde = plaine();
+  const memo = R.nouvelleMemo();
+  const engin = enginDeChauffe(monde);
+  const e = ecoute();
+
+  // Le premier, puis le second : la mémoire compte les chutes, l’établi ne s’agrandit pas.
+  for (const n of [1, 2]) {
+    const etat = menerUnCalage(engin, monde, memo, n, e.sur);
+    assert.equal(etat.garage.episodes.calage, n, `le compteur de calages compte ${etat.garage.episodes.calage} au lieu de ${n}`);
+    assert.equal(memo.deblocages.includes('second_cylindre'), false, `le second cylindre s’ouvre au ${n}e calage`);
+    assert.deepEqual(etat.garage.recents, [], `avant le troisième calage, quelque chose s’ouvre quand même`);
+  }
+
+  // Le troisième : la pièce arrive, et c’est le fait vécu qui l’ouvre, pas une image.
+  const etat = menerUnCalage(engin, monde, memo, 3, e.sur);
+  assert.equal(etat.garage.episodes.calage, 3);
+  assert.deepEqual(memo.deblocages, [...GAGS, 'second_cylindre'], 'le troisième calage n’ouvre pas le second cylindre, ou ouvre autre chose avec lui');
+
+  const neuf = e.ouvertures.find((o) => o.fait === 'calage');
+  assert.ok(neuf, 'le troisième calage ne rend rien de neuf : la pièce arrive sans que le garage le dise');
+  assert.deepEqual(neuf.pieces, ['second_cylindre']);
+  assert.equal(neuf.episodes, 3, 'la pièce s’ouvre sans dire combien de chutes l’ont meritée');
+  assert.equal(neuf.mot, R.PAROLES.ouvre_calage, 'l’ouverture ne porte pas la phrase du billet');
+  assert.ok(neuf.situation, 'l’ouverture ne rend pas la situation qui l’a ouverte');
+
+  // Dans la seconde qui suit, l’établi la montre : montée zero fois, mais branchable.
+  const rang = R.etatDuJeu(engin, monde, memo).etabli.pieces.find((r) => r.id === 'second_cylindre');
+  assert.ok(rang, 'ouverte, la pièce n’est pas à l’établi à l’image suivante');
+  assert.equal(rang.nombre, 0);
+  assert.equal(rang.peutBrancher, true);
+});
+
+test('un calage de plus après le déblocage n’ouvre rien et ne relance pas la même phrase', () => {
+  const monde = plaine();
+  const memo = R.nouvelleMemo();
+  const engin = enginDeChauffe(monde);
+  const e = ecoute();
+
+  for (const n of [1, 2, 3]) menerUnCalage(engin, monde, memo, n, e.sur);
+  assert.equal(e.paroles.filter((clef) => clef === 'ouvre_calage').length, 1,
+    'la phrase du second cylindre ne s’est pas dite une fois à l’ouverture');
+
+  // Deux chutes de plus, sur des machines relancees depuis : ce qui compte est la
+  // memoire du jeu, pas la machine qui la porte. La mémoire les compte, et c’est tout.
+  const apres = memo.deblocages.slice();
+  for (const n of [4, 5]) {
+    const etat = menerUnCalage(enginDeChauffe(monde), monde, memo, n, e.sur);
+    assert.equal(etat.garage.episodes.calage, n, `le calage n°${n} ne s’est pas compte`);
+    assert.deepEqual(memo.deblocages, apres, 'un calage de plus a ouvert quelque chose');
+    jouer(engin, monde, memo, 2, { sur: (etat2) => assert.deepEqual(etat2.garage.recents, [], 'un calage de plus rouvre la file des ouvertures') });
+  }
+  assert.equal(e.paroles.filter((clef) => clef === 'ouvre_calage').length, 1,
+    'la même phrase de Braise est revenue après le déblocage');
+});
+
+test('le bercement du point mort ne compte pas des centaines de chutes : deux cents secondes d’agitation pour une seule', () => {
+  // C'est le piège écrit au billet, et le risque n°1 du ticket : la parole brute du
+  // modèle change des dizaines de fois pendant qu'une machine se débat à son point
+  // mort. Un compteur qui la lirait ouvrirait le second cylindre en trente secondes.
+  const monde = plaine();
+  const memo = R.nouvelleMemo();
+  const engin = machineVapeur({ feu: 1 });
+  const seuil = R.DECLICS_DU_GARAGE.find((d) => d.fait === 'calage').seuil;
+
+  // Lancement, puis le robinet avare et plus personne : elle se débat, elle est tenue.
+  R.coupDeBarre(engin, memo);
+  jouer(engin, monde, memo, 40);
+  engin.commandes.regulateur = ROBINET_AVARE;
+  let bascules = 0;
+  let mot = R.situation(engin, monde);
+  for (let t = 0; t < 200; t += PAS) {
+    R.passerLImage(engin, monde, { duree: PAS });
+    R.etatDuJeu(engin, monde, memo);
+    const brut = R.situation(engin, monde);   // la parole brute, telle que le modele la rend
+    if (brut !== mot) { bascules += 1; mot = brut; }
+  }
+
+  const episodes = R.etatDuJeu(engin, monde, memo).garage.episodes.calage;
+  assert.ok(bascules >= 50, `deux cents secondes de point mort sans un tressaillement de la parole (${bascules}) : cette promesse ne protège plus rien`);
+  // Ce qui se compte n'est pas la bascule mais la chute tenue : une, pas quatre-vingts.
+  assert.ok(episodes <= 1, `${episodes} calages comptés pour ${bascules} bascules : le compteur lit la parole brute du modèle`);
+  assert.ok(episodes < seuil, `${episodes} calages en deux cents secondes d'agitation : le seuil de ${seuil} n'est plus gardé`);
+  assert.equal(memo.deblocages.includes('second_cylindre'), false, 'le second cylindre s’ouvre au bercement');
+});
+
+test('le bercement de deux cents secondes sur la ligne du jeu n’ouvre rien', async () => {
+  // La promesse qui protège tout le billet, jouée sur la ligne du jeu à la graine du
+  // jeu, avec le conducteur de `tests/outillage/mesurer-garage.mjs` : c'est le même
+  // code de mesure que le feuillet, pas une mise en scène du test.
+  const { mene } = await import('./outillage/mesurer-garage.mjs');
+  const mesure = mene({ vitesse: 1, secondes: 200, feu: 1 });
+
+  assert.ok(mesure.bascules >= 600,
+    `la parole brute ne bascule plus que ${mesure.bascules} fois en 200 s : le bercement n'est plus ce qu'il était, cette promesse ne protège plus rien`);
+  const seuil = R.DECLICS_DU_GARAGE.find((d) => d.fait === 'calage').seuil;
+  assert.ok(mesure.episodes.calage < seuil,
+    `le bercement de ${mesure.bascules} bascules a compté ${mesure.episodes.calage} calage(s) : trois chutes tenues en deux cents secondes, c'est le compteur qui dérape`);
+  assert.equal(mesure.ouvertures.filter((o) => o.fait === 'calage').length, 0, 'le second cylindre s’ouvre sur la ligne du jeu sans l’avoir rencontré trois fois');
+  assert.equal(mesure.ouvertures.some((o) => o.pieces.includes('second_cylindre')), false);
+
+  // Et ce qui s'ouvre vient bien du terrain rencontre, pas de l'agitation.
+  for (const neuf of mesure.ouvertures) {
+    assert.notEqual(neuf.fait, 'calage', 'le fait du bercement ouvre');
+    assert.ok(['rampe', 'citerne', 'soute', 'riviere', 'vent', 'gags'].includes(neuf.fait), `une pièce s'ouvre sur un fait que la table ne connait pas : ${neuf.fait}`);
+  }
+});
+
+test('le déblocage ne dépend que de la mémoire du jeu, pas du temps que la page reste ouverte', () => {
+  const monde = plaine();
+
+  // Une memoire qui a vu le fait, un autre engin, un autre moment : le meme garage.
+  const memo = R.nouvelleMemo();
+  const engin = enginDeChauffe(monde);
+  for (const n of [1, 2, 3]) menerUnCalage(engin, monde, memo, n);
+  const ouverts = R.etatDuJeu(engin, monde, memo).garage.ouverts;
+  assert.ok(ouverts.includes('second_cylindre'), 'la mémoire du billet ne porte pas le second cylindre');
+
+  const seconde = enginDeChauffe(monde);
+  const e = ecoute();
+  jouer(seconde, monde, memo, 240, { sur: e.sur });   // quatre minutes de page
+  assert.deepEqual(R.etatDuJeu(seconde, monde, memo).garage.ouverts, ouverts,
+    'le garage d’un engin neuf avec la même mémoire n’est pas le même');
+  assert.deepEqual(e.ouvertures, [], 'au bout de quatre minutes, quelque chose s’est ouvert tout seul');
+
+  // La memoire est bien ce qui decide : la meme machine, une memoire neuve, rend
+  // l’etabli du depart.
+  assert.deepEqual(R.etatDuJeu(engin, monde, R.nouvelleMemo()).garage.ouverts, GAGS,
+    'une pièce s’ouvre sans la mémoire du fait : elle pendait au temps écoulé');
+
+  // Et zero calage ne rend neuf rien d’autre : sur le plat, les pleins faits, deux
+  // cents secondes ne rencontrent aucun des autres ennuis.
+  const memoVierge = R.nouvelleMemo();
+  const e2 = ecoute();
+  jouer(enginDeChauffe(monde), monde, memoVierge, 200, { sur: e2.sur });
+  assert.deepEqual(memoVierge.deblocages, GAGS, `sur le plat sans un calage, se sont ouverts : ${memoVierge.deblocages}`);
+  assert.equal(e2.ouvertures.length, 1, 'les gags s’ouvrent plus d’une fois ou autre chose avec eux');
+});
+
+test('les seuils du garage tiennent dans une seule table, et elle est seule à écrire la mémoire', () => {
+  const source = sourceRegles();
+
+  // Une ligne par ennui, un seul exemplaire de chaque fait.
+  const table = R.TABLE_DU_GARAGE;
+  const faits = table.map((d) => d.fait);
+  assert.equal(new Set(faits).size, faits.length, 'un même fait est écrit deux fois : il ouvrirait deux fois');
+  assert.deepEqual(faits, ['calage', 'rampe', 'citerne', 'soute', 'riviere', 'vent', 'gags']);
+
+  // Ce que demande le billet, énoncé ici et nulle part ailleurs.
+  const de = (fait) => table.find((d) => d.fait === fait);
+  assert.deepEqual([de('calage').seuil, de('calage').pieces], [3, ['second_cylindre']]);
+  assert.deepEqual([de('rampe').pieces, de('citerne').pieces, de('soute').pieces], [['cheval'], ['citerne'], ['soute']]);
+  assert.deepEqual([de('riviere').pieces, de('vent').pieces], [['pompe'], ['eolienne', 'voile']]);
+  assert.deepEqual([de('gags').seuil, de('gags').pieces], [0, GAGS]);
+
+  // Les nombres, relus dans le fichier : la table est le seul endroit où un seuil est
+  // écrit. Un `seuil: 2` glissé dans un auxiliaire casserait cette promesse.
+  const ecrits = source.split('\n')
+    .filter((ligne) => !/^\s*\/\//.test(ligne) && /\bseuil:/.test(ligne))
+    .map((ligne) => Number(ligne.match(/seuil:\s*([\d.]+)/)[1]));
+  assert.deepEqual(ecrits.sort((a, b) => a - b), table.map((d) => d.seuil).sort((a, b) => a - b),
+    `des seuils sont écrits hors de la table : ${ecrits.join(', ')}`);
+  assert.equal((source.match(/deblocages\.push/g) || []).length, 1,
+    'la mémoire des ouvertures s’écrit à plus d’un endroit');
+
+  // Un seuil qui ne peut pas s'énoncer n'est pas un seuil. Chaque ligne se nomme, se
+  // compte, se dit, et ne promet pas une pièce que le modèle ne sentrait pas.
+  for (const declic of table) {
+    assert.ok(typeof declic.nom === 'string' && declic.nom.length > 2, `« ${declic.fait} » n'a pas de nom`);
+    assert.ok(typeof declic.episode === 'string' && declic.episode.length > 20,
+      `le seuil de « ${declic.fait} » ne peut pas s'énoncer : c'est un nombre au hasard`);
+    assert.ok(Number.isFinite(declic.seuil) && declic.seuil >= 0);
+    assert.ok(Array.isArray(declic.pieces) && declic.pieces.length > 0);
+    assert.ok(declic.parole === null || R.PAROLES[declic.parole], `« ${declic.fait} » annonce une clef qu'elle n'a pas`);
+    for (const id of declic.pieces) {
+      assert.ok(M.CATALOGUE[id], `« ${declic.fait} » ouvre une pièce que le catalogue ne connait pas : ${id}`);
+      assert.equal(M.estStructurelle(id), false,
+        `« ${declic.fait} » offre « ${id} », que le modèle ne sent que par sa masse (#18) : une décoration qu'on croit gagnée`);
+      assert.ok(M.CATALOGUE[id].masse > 0, `« ${id} » n'a pas de masse : sa monnaie n'existe pas`);
+    }
+  }
+  // La clef des gags est muette : ils n'ont rencontré aucun ennui (#7, rien au lancement).
+  assert.equal(de('gags').parole, null, 'Braise annonce les gags : ils n’ont pourtant rencontré aucun ennui');
+});
+
+test('aucune pièce du garage ne demande autre chose que sa masse', () => {
+  // Pas de monnaie, pas de compteur de bourse : ni dans la mémoire, ni dans l'état du
+  // jeu, ni dans ce que l'établi rend pour chaque rangée.
+  const interdit = /bourse|monnaie|argent|pourse|escume|prix|score|niveau_gagne/i;
+  const memo = R.nouvelleMemo();
+  for (const clef of Object.keys(memo)) assert.doesNotMatch(clef, interdit, `la mémoire du jeu tient un compte de bourse : ${clef}`);
+
+  const monde = plaine();
+  const engin = M.nouvelEngin(R.PIECES_DE_BASE);
+  engin.soute = 4000;
+  engin.citerne = 4000;
+  const etat = R.etatDuJeu(engin, monde, memo);
+  for (const clef of Object.keys(etat)) assert.doesNotMatch(clef, interdit, `l’état du jeu rend un compte de bourse : ${clef}`);
+  for (const rang of etat.etabli.pieces) {
+    for (const clef of Object.keys(rang)) assert.doesNotMatch(clef, interdit, `l’établi rend un compte de bourse : ${clef}`);
+  }
+
+  // Et brancher ce que le garage ouvre ne consomme que de la masse : ni charbon, ni
+  // eau, ni charbon brûlé. Une pièce à la fois, pour que la masse rendue se lise.
+  for (const declic of R.TABLE_DU_GARAGE) {
+    for (const id of declic.pieces) {
+      const memoOuverte = R.nouvelleMemo();
+      memoOuverte.deblocages.push(id);
+      const machine = M.nouvelEngin(R.PIECES_DE_BASE);
+      machine.soute = 4000;
+      machine.citerne = 4000;
+      const avant = R.etatDuJeu(machine, monde, memoOuverte);
+      const bruleAvant = machine.charbonBrule;
+
+      assert.equal(R.brancherPiece(machine, memoOuverte, id), true, `l’établi refuse « ${id} » ouverte par le garage`);
+
+      const apres = R.etatDuJeu(machine, monde, memoOuverte);
+      assert.equal(machine.charbonBrule, bruleAvant, `brancher « ${id} » a brûlé du charbon`);
+      assert.equal(machine.soute, 4000, `brancher « ${id} » a pris du charbon à la soute`);
+      assert.equal(machine.citerne, 4000, `brancher « ${id} » a pris de l’eau à la citerne`);
+      const attendue = avant.etabli.masse + M.CATALOGUE[id].masse;
+      assert.ok(Math.abs(apres.etabli.masse - attendue) < 1e-9,
+        `brancher « ${id} » rend ${apres.etabli.masse} t au lieu de ${attendue} t : sa monnaie n'est pas sa masse`);
+    }
+  }
+});
+
+test('la pièce neuve est dessinée dans la seconde qui suit son ouverture', () => {
+  // Ce que la projection doit trouver pour la montrer : l'état du jeu qui rend la
+  // pièce, et un peintre qui la connaît. Les pixels eux-mêmes ne se promettent pas
+  // ici — ce qui a été vu à l'écran est consigné dans `docs/relecture-billet-10.md`.
+  const monde = plaine();
+  const memo = R.nouvelleMemo();
+  const engin = enginDeChauffe(monde);
+  for (const n of [1, 2, 3]) menerUnCalage(engin, monde, memo, n);
+
+  // Dans la seconde : l'établi la nomme, et l'état répond du nombre qu'elle porte.
+  const aLaSouverture = R.etatDuJeu(engin, monde, memo);
+  const rang = aLaSouverture.etabli.pieces.find((r) => r.id === 'second_cylindre');
+  assert.ok(rang, 'ouverte, la pièce n’est pas nommée à l’établi');
+  assert.equal(rang.nom, M.CATALOGUE.second_cylindre.nom);
+  assert.equal(aLaSouverture.pieces.second_cylindre, 0, 'l’état du jeu ne répond pas du nombre de secondes cylindres');
+
+  // Montée, l'image la voit à l'image suivante : `pieces` la porte, la projection la
+  // regarde, et le peintre a une fonction pour elle.
+  assert.equal(R.brancherPiece(engin, memo, 'second_cylindre'), true);
+  const montee = R.etatDuJeu(engin, monde, memo);
+  assert.equal(montee.pieces.second_cylindre, 1, 'branchée, l’état du jeu ne rend pas la pièce montée');
+
+  const projection = sourceProjection();
+  for (const declic of R.TABLE_DU_GARAGE) {
+    for (const id of declic.pieces) {
+      assert.match(projection, new RegExp(`p\\.${id}\\b`),
+        `le dessin ne regarde jamais « ${id} » : ouverte, elle ne se verrait pas`);
+    }
+  }
+  for (const peintre of ['dessineLeSecondCylindre', 'dessineLaPompe', 'dessineLeCheval', 'dessineLEolienne', 'dessineLaVoile']) {
+    assert.match(projection, new RegExp(`function ${peintre}\\(`), `le peintre « ${peintre} » n'existe pas`);
+    assert.match(projection, new RegExp(`${peintre}\\(etat\\)`), `« ${peintre} » n'est appelé par personne`);
+  }
+});
+
+test('le feuillet de relecture du billet dit ce que le code dit', () => {
+  // Le feuillet du billet #7 a pourri en une passe : quatorze lignes sur vingt-deux
+  // que le jeu ne prononçait plus. Celui-là est généré (`tests/outillage/
+  // ecrire-relecture-10.mjs`) et cette promesse est la garde qui empêche l'écart.
+  const feuillet = readFileSync(new URL('../docs/relecture-billet-10.md', import.meta.url), 'utf8');
+  const clefs = Object.keys(R.PAROLES);
+  for (const [clef, ligne] of Object.entries(R.PAROLES)) {
+    assert.ok(feuillet.includes(ligne), `la phrase « ${clef} » n'est pas dans le feuillet : il ne dit plus ce que le jeu dit`);
+  }
+  assert.ok(feuillet.includes(`**${clefs.length} phrases**`.replace('**', '**')), 'le feuillet ne compte pas les phrases du jeu');
+  for (const declic of R.TABLE_DU_GARAGE) {
+    assert.ok(feuillet.includes(declic.episode), `le seuil de « ${declic.fait} » n'est pas énoncé dans le feuillet`);
+    const rangee = feuillet.split('\n').find((ligne) => ligne.startsWith(`|${declic.fait}|`));
+    assert.ok(rangee, `la table du feuillet n'a plus de ligne « ${declic.fait} »`);
+    assert.ok(rangee.split('|').map((c) => c.trim()).includes(String(declic.seuil)),
+      `la ligne « ${declic.fait} » du feuillet n'affiche pas ${declic.seuil} : il montre un autre nombre que celui de la table`);
+    for (const id of declic.pieces) {
+      assert.ok(rangee.includes(M.CATALOGUE[id].nom), `la ligne « ${declic.fait} » ne nomme pas « ${id} »`);
+    }
+  }
+  // Ce que la ligne du jeu ne produit pas est écrit, pas tu. La garde ne tient pas
+  // à une phrase mot à mot — le générateur a le droit de la reformuler, et il l'a
+  // reformulée une fois déjà. Elle tient au nombre : dans la section des ouvertures
+  // qui ne viennent pas, la ligne du calage doit montrer un meilleur score resté
+  // sous son seuil, et le second cylindre doit y être nommé.
+  const sectionDesManques = feuillet.slice(feuillet.indexOf('## 6.'));
+  assert.ok(sectionDesManques.length > 80 && feuillet.includes('## 6.'),
+    'le feuillet n’a plus de section sur ce qui ne s’ouvre pas sur la ligne du jeu');
+  assert.match(sectionDesManques, /second cylindre/,
+    'le second cylindre n’est plus nommé là où le feuillet dit ce que la ligne ne rencontre pas');
+  const ligneDeCalage = sectionDesManques.split('\n').find((l) => l.startsWith('|calage|'));
+  assert.ok(ligneDeCalage, 'la table des manques n’a plus de ligne « calage »');
+  const colonnesDeManque = ligneDeCalage.split('|').map((c) => c.trim());
+  const seuilAnnonce = Number(colonnesDeManque[2]);
+  const seuilDuModele = R.TABLE_DU_GARAGE.find((d) => d.fait === 'calage').seuil;
+  assert.ok(seuilAnnonce === seuilDuModele, `la table des manques annonce un seuil de ${seuilAnnonce}, la table du garage veut ${seuilDuModele}`);
+  // Le score mesuré doit rester un score mesuré, de la forme n/seuil, et non une
+  // impression tapée à la main. On ne vérifie PAS qu'il reste sous le seuil : si une
+  // autre ligne du jeu vient à produire les trois chutes, ce nombre doit bouger sans
+  // casser une promesse — c'est la mesure d'en face qui dira si la porte s'est ouverte.
+  assert.match(colonnesDeManque[3], /^\d+\/\d+$/,
+    `« ${colonnesDeManque[3]} » n'est pas un score mesuré de la forme n/Seuil`);
+  assert.ok(Number(colonnesDeManque[3].split('/')[1]) === seuilDuModele,
+    'le dénominateur du score mesuré a glissé hors de la table du garage');
+  const nomDuCylindre = M.CATALOGUE.second_cylindre.nom;
+  assert.ok(colonnesDeManque[colonnesDeManque.length - 2] === nomDuCylindre,
+    `la ligne des manques doit nommer « ${nomDuCylindre} »`);
 });
