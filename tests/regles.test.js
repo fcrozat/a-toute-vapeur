@@ -2572,3 +2572,47 @@ test('le feuillet de relecture du billet dit ce que le code dit', () => {
   assert.ok(colonnesDeManque[colonnesDeManque.length - 2] === nomDuCylindre,
     `la ligne des manques doit nommer « ${nomDuCylindre} »`);
 });
+
+test('la soute rend le kilo de son charbon, la citerne le litre de son eau', () => {
+  // Billet #20, trouvé en relevant le texte rendu par la page : « SOUTE 289 L ».
+  // La soute contient du charbon pesé en kilos, la citerne de l'eau mesurée en
+  // litres. Un « L » écrit en dur pour les deux faisait lire une grandeur qui
+  // n'existe pas — et rien ne clochait à l'œil, le nombre était cohérent avec le
+  // réservoir d'eau voisin. L'unité vient donc de l'état du jeu.
+  const etat = R.etatDuJeu(machineVapeur(), plaine());
+  assert.equal(etat.reservoirs.soute.unite, 'kg',
+    'la soute annonce autre chose que des kilos de charbon');
+  assert.equal(etat.reservoirs.citerne.unite, 'L',
+    'la citerne annonce autre chose que des litres d’eau');
+  assert.notEqual(etat.reservoirs.soute.unite, etat.reservoirs.citerne.unite,
+    'les deux réservoirs portent la même unité : ils ne contiennent pas la même chose');
+
+  // Le kilo de la soute est celui que soutent les règles : 5 kg par seconde de temps
+  // machine. Si le nombre montré comptait autre chose, ce delta cesserait de se lire
+  // dessus — et c’est bien là que le « L » du billet #20 avait sa chance de nuire.
+  const { engin, monde } = enginALaFaim({ distance: 44, soute: 10 });
+  const avant = engin.soute;
+  for (let k = 0; k < 120; k++) R.soutage(engin, monde, 1 / 60);   // deux secondes machine
+  const gagne = engin.soute - avant;
+  assert.ok(Math.abs(gagne - 2 * R.DEBIT_DE_SOUTAGE) < 0.6,
+    `deux secondes de soutage rapportent ${gagne.toFixed(2)} : le soutage ne se compte plus en kilos`);
+
+  // Le nombre rendu à l’écran est ce tas de kilos, pas une part du réservoir.
+  const montre = R.etatDuJeu(engin, monde).reservoirs.soute;
+  assert.equal(montre.chiffres, Math.round(engin.soute).toLocaleString('fr-FR'),
+    'la soute n’affiche plus les kilos qu’elle contient');
+  assert.equal(montre.unite, 'kg', 'l’unité qui suit ce nombre n’est plus celle du charbon');
+});
+
+test('la projection emprunte l’unité au réservoir, elle ne l’écrit pas', () => {
+  // Même famille que la promesse qui vérifie que la projection ne demande à
+  // l'état du jeu que ce qu'il rend : ici c'est l'unité qui ne doit pas être
+  // devinée ligne à ligne (billet #20).
+  const source = sourceProjection();
+  const ligne = source.split('\n').find((l) => l.includes('reservoir.chiffres'));
+  assert.ok(ligne, 'la projection ne rend plus le nombre d’un réservoir');
+  assert.match(ligne, /reservoir\.unite/,
+    'la projection écrit l’unité d’un réservoir au lieu de la lire dans l’état du jeu');
+  assert.doesNotMatch(source, /chiffres\s*\}?[^`]*\sL\s+—/,
+    'une unité en dur traîne derrière un nombre de réservoir dans la projection');
+});
