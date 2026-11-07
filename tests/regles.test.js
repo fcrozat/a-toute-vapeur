@@ -2681,3 +2681,109 @@ test('la projection emprunte l’unité au réservoir, elle ne l’écrit pas', 
   assert.doesNotMatch(source, /chiffres\s*\}?[^`]*\sL\s+—/,
     'une unité en dur traîne derrière un nombre de réservoir dans la projection');
 });
+
+test('la masse embarquée suit le charbon et l’eau que la machine porte', () => {
+  // Billet #19 : un plein de soute et de citerne ajoute 540 kg (300 de charbon +
+  // 240 d'eau) à la masse de tôle — 3,78 t au lieu des 3,24 t que l'écran
+  // annonait avant, immobile du premier au dernier coup de pelle.
+  const monde = plaine();
+  const engin = machineVapeur({ feu: 0 });
+  const memo = R.nouvelleMemo();
+
+  const annonce = () => R.etatDuJeu(engin, monde, memo).etabli.masse;
+  const carreeAuKg = (t) => parseFloat(t.toFixed(3));
+
+  // Au plein : 0,4 t de châssis + somme des masses + 300 kg charbon + 240 kg eau.
+  const pleine = annonce();
+  const attenduePleine = 0.4 +
+    Object.entries(engin.pieces).reduce((s, [id, n]) => s + (M.CATALOGUE[id]?.masse || 0) * n, 0) +
+    (engin.capacite('soute') + engin.capacite('citerne')) / 1000;
+  assert.ok(Math.abs(carreeAuKg(pleine) - carreeAuKg(attenduePleine)) < 1e-9,
+    `pleine annoncée ${pleine.toFixed(4)} t au lieu de ${attenduePleine.toFixed(4)} t`);
+
+  // On vide tout : 540 kg de moins.
+  engin.soute = 0;
+  engin.citerne = 0;
+  const vide = annonce();
+  const attendueVide = attenduePleine - (300 + 240) / 1000;
+  assert.ok(Math.abs(carreeAuKg(vide) - carreeAuKg(attendueVide)) < 1e-9,
+    `vide annoncée ${vide.toFixed(4)} t au lieu de ${attendueVide.toFixed(4)} t`);
+  assert.ok(Math.abs(carreeAuKg(pleine - vide) - 0.54) < 1e-9,
+    `vider les deux réservoirs ne rend que ${(pleine - vide).toFixed(4)} t : 540 kg attendus`);
+
+  // Une citerne de plus : 240 kg d'eau de plus à porter.
+  const avant = vide;
+  R.brancherPiece(engin, memo, 'citerne');
+  engin.citerne = engin.capacite('citerne');   // 240 L
+  const deuxCiternes = annonce();
+  // Une citerne de 200 kg posée sur un engin déjà vide, puis remplie de ses 240 L :
+  // la tôle (0,2 t) plus l'eau (0,24 t) = 0,44 t de plus. `capacite` rend déjà le
+  // total des deux citernes. On remplit à ce total.
+  const eauDesDeuxCiternes = engin.capacite('citerne') / 1000;
+  assert.ok(
+    Math.abs(carreeAuKg(deuxCiternes) - carreeAuKg(avant + M.CATALOGUE.citerne.masse + eauDesDeuxCiternes)) < 1e-9,
+    `deux citernes pleines annoncent ${deuxCiternes.toFixed(4)} t au lieu de ${(avant + M.CATALOGUE.citerne.masse + eauDesDeuxCiternes).toFixed(4)} t`
+  );
+
+  // La soute démontée ne pèse ni sa tôle ni son contenu : la règle du billet.
+  // On remet la soute à son plein avant de la retirer — une soute vide ne prouve rien.
+  engin.soute = 300;   // le plein d'une soute (300 kg)
+  const charbonEmporte = 300 / 1000;   // 0,3 t, figé avant que le modèle ne perde la pièce
+  const avecSoute = annonce();
+  engin.debrancher('soute');   // le geste de dépose, comme le fait l'établi
+  const sansSoute = R.etatDuJeu(engin, monde, memo).etabli.masse;
+  // `masseTotale` lit `charbonDisponible` : sans soute, le charbon est là mais
+  // hors de portée, donc ne pèse plus.
+  const perdue = avecSoute - sansSoute;
+  const attendue = M.CATALOGUE.soute.masse + charbonEmporte;   // 0,2 t de tôle + 0,3 t de charbon
+  assert.ok(Math.abs(perdue - attendue) < 1e-9,
+    `retirer la soute ne rend que ${perdue.toFixed(4)} t au lieu de ${attendue.toFixed(4)} t`
+  );
+});
+
+test('dans une rampe, le plein coûte des mètres au démarrage', () => {
+  // Mesuré, pas décrété : un lest de 800 kg (la remorque) coûte des mètres dans
+  // la rampe. La remorque est le seul poids du catalogue que le modèle ne sent que
+  // par la balance — elle n'ajoute ni eau, ni charbon, ni adhérence — et la
+  // promesse lit le poids venu de `masseTotale`, pas un détail de pièce.
+  const C = R.commandeDuCurseur;
+
+  function grimper(eau, pieces = []) {
+    const plat = M.nouveauMonde({});
+    const rampe = M.nouveauMonde({ pente: 0.15 });
+    const engin = M.nouvelEngin([...R.PIECES_DE_BASE, ...pieces]);
+    engin.citerne = eau;
+    engin.commandes.feu = C(100);
+    engin.commandes.regulateur = C(100);
+    // La réserve est tenue au plein sur le plat : on ne mesure pas la soif.
+    rouler(engin, plat, { duree: 40, ravitaille: true });
+    engin.pousser();
+    rouler(engin, plat, { duree: 10, ravitaille: true });
+    const distanceAuPied = engin.distance;
+    const eauAuPied = engin.citerne;
+    // Dans la rampe, on ne ravitaille plus : c'est la masse qui parle seule.
+    // Dix secondes suffisent pour que l'écart s'exprime, et les deux machines
+    // doivent encore avoir de la vapeur en sortie — sinon la soif vole ce que
+    // la masse explique.
+    rouler(engin, rampe, { duree: 10 });
+    return { distanceDansLaRampe: engin.distance - distanceAuPied, aSec: engin.citerne <= 0, eauAuPied };
+  }
+
+  const chargee = grimper(240, ['remorque']);
+  const allegee = grimper(240);
+  const ecartEnRampe = allegee.distanceDansLaRampe - chargee.distanceDansLaRampe;
+
+  // Aucune des deux ne doit être à sec au pied de la rampe, ni à la sortie :
+  // la soif vole des mètres que la masse devrait seule expliquer.
+  assert.ok(chargee.eauAuPied >= 200, `la machine lestée n'a plus que ${chargee.eauAuPied.toFixed(0)} L au pied de la rampe`);
+  assert.ok(!chargee.aSec, 'la machine lestée est à sec après dix secondes de rampe');
+  assert.ok(!allegee.aSec, 'la machine témoin est à sec après dix secondes de rampe');
+
+  // La flèche : plus lourd, moins loin. Si elle se retournait, le modèle mentirait.
+  assert.ok(ecartEnRampe > 0,
+    `la machine lestée gagne ${(-ecartEnRampe).toFixed(2)} m de plus dans la rampe : la remorque pousse`);
+  // Un écart mesurable existe. Le seuil est large exprès — un billet futur qui
+  // change la rampe déplace le nombre, pas la flèche.
+  assert.ok(ecartEnRampe > 0.01,
+    `l'écart de ${ecartEnRampe.toFixed(3)} m n'est pas mesurable : la masse ne compte pas`);
+});
