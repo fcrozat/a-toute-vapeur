@@ -2361,6 +2361,13 @@ test('un calage de plus après le déblocage n’ouvre rien et ne relance pas la
   const e = ecoute();
 
   for (const n of [1, 2, 3]) menerUnCalage(engin, monde, memo, n, e.sur);
+  // Le garage a ouvert le second cylindre au troisième calage, mais Braise peut
+  // encore retenir sa respiration : l'ENTRE_DEUX (2,5 s entre deux phrases) a pu
+  // être relancé par un barre_echappee pendant la reprise, et menerUnCalage
+  // s'arrête dès que l'épisode est compté — avant que la parole ait repris son
+  // souffle. On lui laisse le temps de parler, sans quoi le fait neuf ne se lit
+  // pas dans la trace écrite du test.
+  jouer(engin, monde, memo, R.ENTRE_DEUX + 0.5, { sur: e.sur, ravitaille: true });
   assert.equal(e.paroles.filter((clef) => clef === 'ouvre_calage').length, 1,
     'la phrase du second cylindre ne s’est pas dite une fois à l’ouverture');
 
