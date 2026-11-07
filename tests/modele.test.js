@@ -31,6 +31,7 @@ const CHAUFFE = 50; // secondes de feu avant de démarrer : la vapeur monte, len
 const MACHINE = [
   'chaudiere', 'foyer', 'soute', 'citerne', 'cylindre', 'tiroir', 'excentrique',
   'regulateur', 'crosse', 'bielle', 'roues', 'boite_a_fumee', 'soupape',
+  'changement_de_marche',
 ];
 
 // Le décor des réservoirs, écrit une fois depuis le billet #19 : les réservoirs sont

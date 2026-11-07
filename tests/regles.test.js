@@ -27,6 +27,7 @@ const CHAUFFE = 50; // secondes de feu avant de démarrer : la vapeur monte, len
 const MACHINE = [
   'chaudiere', 'foyer', 'soute', 'citerne', 'cylindre', 'tiroir', 'excentrique',
   'regulateur', 'crosse', 'bielle', 'roues', 'boite_a_fumee', 'soupape',
+  'changement_de_marche',
 ];
 
 // Le décor des réservoirs, écrit une fois depuis le billet #19 : les réservoirs sont
@@ -217,7 +218,10 @@ test('les règles disent avec quelle machine on ouvre le jeu', () => {
   // La projection ne choisit pas ce qu’elle dessine : elle demande la machine de
   // départ, et elle la trouve assemblée.
   const pieces = R.PIECES_DE_BASE;
-  assert.ok(Array.isArray(pieces) && pieces.length === 13, `la machine de départ n’est pas la machine des treize pièces : ${pieces && pieces.length}`);
+  // Quatorze pièces depuis le billet #11 : le changement de marche est sorti de
+  // PIECES_A_MASSE_SEULE et entre dans l'engin de départ. Sans lui, la marche
+  // arrière n'est pas possible — c'est le billet.
+  assert.ok(Array.isArray(pieces) && pieces.length === 14, `la machine de départ n’a plus le compte attendu de pièces : ${pieces && pieces.length} au lieu de 14`);
   for (const id of ['chaudiere', 'foyer', 'roues', 'cylindre', 'tiroir', 'excentrique']) {
     assert.ok(pieces.includes(id), `la machine de départ n’a pas de ${id} à dessiner`);
   }
@@ -1204,27 +1208,33 @@ test("l'établi liste les pièces de l'engin avec leur nombre", () => {
   assert.equal(citerne.nom, 'Citerne', "l'établi n'emploie pas le mot du glossaire");
 });
 
-// Le chiffre du billet, mesuré et non réparé : vingt-huit pièces au catalogue, treize
+// Le chiffre du billet, mesuré et non réparé : vingt-huit pièces au catalogue, quatorze
 // presentees a qui ouvre le jeu. Le billet #10 y ajoute les trois gags, disponibles
 // dès la première seconde sans aucun ennui rencontré : ils sont donc de ces lignes
-// dès la première image. Les douze autres restent verrouillées, donc absentes du
+// dès la première image. Les onze autres restent verrouillées, donc absentes du
 // tiroir — ni grisées, ni expliquées, ni nommées (ADR 0006).
-test('sur une partie neuve, l’établi présente treize pièces sur vingt-huit', () => {
+//
+// La quatorzieme piece est le changement de marche (billet #11) : sorti de
+// PIECES_A_MASSE_SEULE, il entre dans l'engin d'ouverture.
+test('sur une partie neuve, l’établi présente quatorze pièces sur vingt-huit', () => {
   const catalogue = Object.keys(M.CATALOGUE);
   assert.equal(catalogue.length, 28, 'le catalogue ne compte plus vingt-huit pièces : le compte du billet est à reprendre');
 
   const engin = M.nouvelEngin(R.PIECES_DE_BASE);
   const memo = R.nouvelleMemo();
   const rangs = R.etatDuJeu(engin, plaine(), memo).etabli.pieces;
-  assert.equal(rangs.length, 13 + R.GAGS_DU_GARAGE[0].pieces.length,
-    `l'établi d'une partie neuve présente ${rangs.length} pièces : les treize de l'engin d'ouverture plus les gags du billet #10`);
+  const attendus = R.PIECES_DE_BASE.length + R.GAGS_DU_GARAGE[0].pieces.length;
+  assert.equal(rangs.length, attendus,
+    `l'établi d'une partie neuve présente ${rangs.length} pièces au lieu de ${attendus}`);
   for (const id of R.PIECES_DE_BASE) {
     assert.ok(rangs.some((r) => r.id === id), `l'établi a oublié la pièce de l'engin d'ouverture « ${id} »`);
   }
 
   const fermees = catalogue.filter((id) => !R.PIECES_DE_BASE.includes(id)
     && !R.GAGS_DU_GARAGE[0].pieces.includes(id));
-  assert.equal(fermees.length, 12, 'le compte des pièces verrouillées a bougé : le billet #10 est à relire');
+  // Onze pièces verrouillées depuis le billet #11 (changement_de_marche est dans
+  // l'engin de départ, plus dans la liste des structurelles seules).
+  assert.equal(fermees.length, 11, `le compte des pièces verrouillées a bougé : ${fermees.length} au lieu de 11`);
   for (const id of fermees) {
     assert.ok(!rangs.some((r) => r.id === id), `la pièce verrouillée « ${id} » est nommée à l'établi`);
     assert.ok(!rangs.some((r) => r.nom === M.CATALOGUE[id].nom), `la pièce verrouillée « ${id} » est nommée à l'établi sous son mot du métier`);
@@ -2786,4 +2796,75 @@ test('dans une rampe, le plein coûte des mètres au démarrage', () => {
   // change la rampe déplace le nombre, pas la flèche.
   assert.ok(ecartEnRampe > 0.01,
     `l'écart de ${ecartEnRampe.toFixed(3)} m n'est pas mesurable : la masse ne compte pas`);
+});
+
+test('sans le changement de marche, la machine refuse la marche arrière', () => {
+  // Billet #11 : le changement de marche est une pièce, pas une commande.
+  // Sans elle, `basculerLaMarche` échoue, et le modèle ignore la marche arrière
+  // même si on la réclame — `pousser` et la physique gardent le sens avant.
+  const engin = M.nouvelEngin(R.PIECES_DE_BASE.filter((id) => id !== 'changement_de_marche'));
+  engin.commandes.feu = R.commandeDuCurseur(100);
+  engin.commandes.regulateur = R.commandeDuCurseur(100);
+
+  // La bascule échoue sans la pièce.
+  assert.equal(R.basculerLaMarche(engin), false,
+    'basculer la marche sans la pièce a réussi');
+  assert.equal(engin.machine.marche, 'avant',
+    'la marche a changé sans la pièce');
+
+  // La pièce n'est pas montée : l'écran ne la montre pas.
+  assert.equal(R.marcheArriereEstMontee(engin), false,
+    'la marche arrière est annoncée montée sans la pièce');
+
+  // Chauffe et barre : malgré marche = arriere forcée à la main, le modèle
+  // l'ignore et avance dans le sens qu'on lui donne.
+  engin.machine.marche = 'arriere';
+  for (let t = 0; t < 90; t += 1 / 480) M.pasDeTemps(engin, plaine(), 1 / 480);
+  engin.pousser();
+  for (let t = 0; t < 40; t += 1 / 480) M.pasDeTemps(engin, plaine(), 1 / 480);
+  assert.ok(engin.distance > 5,
+    `sans le levier, la machine n'a pas avancé (${engin.distance.toFixed(1)} m)`);
+  assert.ok(engin.vitesse() > 0,
+    `sans le levier, la machine est allée en arrière (${engin.vitesse().toFixed(2)} m/s)`);
+});
+
+test('avec le changement de marche, la bascule change le sens du mouvement', () => {
+  // La pièce montée, la marche arrière rend exactement ce qu'elle rendait.
+  const engin = M.nouvelEngin(R.PIECES_DE_BASE);
+  engin.commandes.feu = R.commandeDuCurseur(100);
+  engin.commandes.regulateur = R.commandeDuCurseur(100);
+
+  assert.equal(R.marcheArriereEstMontee(engin), true,
+    'la marche arrière n\'est pas annoncée montée');
+
+  // Aller en avant, puis basculer et vérifier qu'on recule.
+  for (let t = 0; t < 90; t += 1 / 480) M.pasDeTemps(engin, plaine(), 1 / 480);
+  engin.pousser();
+  for (let t = 0; t < 10; t += 1 / 480) M.pasDeTemps(engin, plaine(), 1 / 480);
+
+  const avant = engin.distance;
+  assert.equal(R.basculerLaMarche(engin), true,
+    'basculer la marche avec la pièce a échoué');
+  assert.equal(engin.machine.marche, 'arriere',
+    'la marche n\'est pas passée en arrière');
+
+  // On laisse la machine ralentir, s'arrêter, et repartir en sens inverse.
+  for (let t = 0; t < 120; t += 1 / 480) M.pasDeTemps(engin, plaine(), 1 / 480);
+  assert.ok(engin.distance < avant,
+    `la machine n'est pas revenue en arrière (${engin.distance.toFixed(1)} m pour ${avant.toFixed(1)})`);
+  assert.ok(engin.vitesse() < 0,
+    `la machine n'a pas de vitesse arrière (${engin.vitesse().toFixed(2)} m/s)`);
+});
+
+test('la projection montre et cache le levier selon la pièce', () => {
+  const source = sourceProjection();
+  // Le levier s'affiche et se cache selon la pièce.
+  assert.match(source, /marcheArriere\.hidden\s*=\s*!\(etat\.pieces\.changement_de_marche/,
+    'la projection ne cache pas le levier selon la pièce');
+  // Le bouton a son aria-pressed synchrone avec la marche.
+  assert.match(source, /marcheArriere\.setAttribute\('aria-pressed'/,
+    'le levier ne rend pas son état pressé');
+  // Le bouton existe dans le DOM.
+  assert.match(source, /marche-arriere/,
+    'le bouton de marche arrière n\'existe pas dans la projection');
 });

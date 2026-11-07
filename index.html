@@ -95,6 +95,9 @@
            que personne n'ouvre le levier, et ce que ça coûte, c'est le modèle qui le
            compte. Le bouton ne se montre qu'avec la pièce. -->
       <button id="pompe" type="button" aria-pressed="false" hidden>La pompe</button>
+      <!-- Le levier de changement de marche (billet n°11). Il ne se montre qu'avec
+           la pièce : sans elle, la machine part dans le sens qu'on lui donne. -->
+      <button id="marche-arriere" type="button" aria-pressed="false" hidden>Marche arrière</button>
       <p id="vitesse-temps"><span class="etiquette">Vitesse de temps</span>
         <button class="palier" type="button" data-vitesse="1" aria-pressed="true">×1</button>
         <button class="palier" type="button" data-vitesse="2" aria-pressed="false">×2</button>
@@ -276,10 +279,11 @@ const modeleVapeur = (() => {
       raison: 'aucun organe du modèle ne les lit ; tant que la distribution ne demandera pas de seconde bielle, ce n\'est pas une pièce',
       seDemonte: false,
     },
-    changement_de_marche: {
-      raison: 'le sens est tenu par machine.marche, une commande du chauffeur, non par une pièce ; le jour où un levier l\'ouvrira, il faudra la nommer ici',
-      seDemonte: false,
-    },
+    // Le changement de marche est désormais une pièce montée et démontable
+    // (billet #11) : sans elle, la machine part dans le sens qu'on lui donne
+    // et le levier n'apparaît pas à l'écran. Avec elle, la marche arrière rend
+    // exactement ce qu'elle rendait. La pièce entre dans PIECES_DE_BASE et
+    // sort de cette table.
     transmission: {
       raison: 'le rapport de l\'arbre aux roues (RAPPORT) est une constante de la machine, pas un engrenage que l\'on monte',
       seDemonte: false,
@@ -477,7 +481,7 @@ const modeleVapeur = (() => {
         // calé droit : la vapeur n'admet qu'une fois le piston parti, et la machine
         // reste prise à son point mort, chauffée comme on voudra.
         if (!this.pieces.excentrique) return 0;
-        return this.machine.marche === 'arriere' ? Math.PI - this.machine.avance : this.machine.avance;
+        return (this.machine.marche === 'arriere' && this.pieces.changement_de_marche) ? Math.PI - this.machine.avance : this.machine.avance;
       },
       // Ce que les réservoirs embarqués peuvent contenir : charbon ou eau.
       capacite(id) {
@@ -537,7 +541,7 @@ const modeleVapeur = (() => {
       // sur une manivelle qui tourne plus vite que ses bras. Sans cette borne, la
       // marteler tiendrait lieu de charbon, ce qu'elle n'a jamais fait.
       pousser(vitesse = COUP_DE_LA_BARRE) {
-        const sens = this.machine.marche === 'arriere' ? -1 : 1;
+        const sens = (this.machine.marche === 'arriere' && this.pieces.changement_de_marche) ? -1 : 1;
         if (Math.abs(this.machine.vitesseAngulaire) >= VITESSE_DE_LA_BARRE) return this;
         this.machine.vitesseAngulaire += sens * vitesse;
         this.machine.cale = false;
@@ -887,6 +891,7 @@ const reglesDuJeu = (() => {
   const PIECES_DE_BASE = [
     'chaudiere', 'foyer', 'soute', 'citerne', 'cylindre', 'tiroir', 'excentrique',
     'regulateur', 'crosse', 'bielle', 'roues', 'boite_a_fumee', 'soupape',
+    'changement_de_marche',
   ];
 
   // Ce que fait l'engin, à l'instant où on le regarde : un nom, sans mémoire.
@@ -962,6 +967,20 @@ const reglesDuJeu = (() => {
   function commandeDuCurseur(pourCent) {
     const n = Number(pourCent);
     return borne01(Number.isFinite(n) ? n / 100 : 0);
+  }
+
+  // Le levier de changement de marche (billet #11). Sans lui, la machine part dans
+  // le sens qu'on lui donne et le levier n'apparaît pas à l'écran. Avec lui, basculer
+  // la marche d'avant en arrière change le sens du couple. Le geste est une pièce :
+  // démontée, elle disparaît de l'écran et la machine repart en avant.
+  function basculerLaMarche(engin) {
+    if (!engin.pieces.changement_de_marche) return false;
+    engin.machine.marche = engin.machine.marche === 'arriere' ? 'avant' : 'arriere';
+    return true;
+  }
+
+  function marcheArriereEstMontee(engin) {
+    return !!engin.pieces.changement_de_marche;
   }
 
   // Le régulateur dose la vapeur admise. Il ne décale pas l'excentrique : l'avance
@@ -2237,6 +2256,7 @@ const reglesDuJeu = (() => {
     GRAINE_DU_JEU, SEUIL_DE_RAMPE, nombreDeLaGraine, ligneDeLaGraine, mondeDeLaLigne, mondeDeLaGraine,
     mondeSousLesRoues, prochaineRampe,
     soutage, DEBIT_DE_SOUTAGE, UNITES_DE_RESERVOIR,
+    basculerLaMarche, marcheArriereEstMontee,
   };
   return reglesDuJeu;
 })();
@@ -2268,6 +2288,7 @@ const reglesDuJeu = (() => {
     regulateurDit: document.getElementById('regulateur-dit'),
     barre: document.getElementById('barre'),
     pompe: document.getElementById('pompe'),
+    marcheArriere: document.getElementById('marche-arriere'),
     paliers: Array.from(document.querySelectorAll('#vitesse-temps .palier')),
     distanceDits: document.getElementById('distance-dits'),
     rampeDite: document.getElementById('rampe-dite'),
@@ -3258,6 +3279,12 @@ const reglesDuJeu = (() => {
     // Le levier de la pompe n'existe à l'écran que pour une machine qui porte la
     // pièce : avant le garage, rien à embrayer et rien à apprendre.
     vues.pompe.hidden = !(etat.pieces.pompe > 0);
+    // Le levier de changement de marche (billet #11) : la pièce décide de sa
+    // présence, la marche vue décide de son état pressé/enfoncé.
+    vues.marcheArriere.hidden = !(etat.pieces.changement_de_marche > 0);
+    if (!vues.marcheArriere.hidden) {
+      vues.marcheArriere.setAttribute('aria-pressed', String(engin.machine.marche === 'arriere'));
+    }
     ecrire(vues.distanceDits, motsDeDistance(etat.comptes.distance));
     ecrire(vues.rampeDite, motsDeLaRampe(etat.sol.prochaine));
     ecrire(vues.toursDits, motsDeTours(etat.comptes.tours));
@@ -3307,6 +3334,12 @@ const reglesDuJeu = (() => {
     engin.commandes.pompe = R.commandeDuCurseur(embrayee ? 0 : 100);
     vues.pompe.setAttribute('aria-pressed', String(!embrayee));
   }
+  // Le levier de changement de marche au tableau (billet #11). Sans la pièce, il
+  // n'est pas à l'écran ; avec elle, la bascule change le sens du couple moteur.
+  function basculerLaMarcheArriere() {
+    R.basculerLaMarche(engin);
+    vues.marcheArriere.setAttribute('aria-pressed', String(engin.machine.marche === 'arriere'));
+  }
   function couperLaParole() {
     const muet = R.basculerParole(memo);
     vues.braiseBouton.setAttribute('aria-pressed', String(!muet));
@@ -3320,6 +3353,7 @@ const reglesDuJeu = (() => {
   vues.regulateur.addEventListener('input', () => reglerLeRegulateur(Number(vues.regulateur.value)));
   vues.barre.addEventListener('click', coupDeBarre);
   vues.pompe.addEventListener('click', embrayerLaPompe);
+  vues.marcheArriere.addEventListener('click', basculerLaMarcheArriere);
   vues.garage.addEventListener('click', ouvrirLeGarage);
   vues.braiseBouton.addEventListener('click', couperLaParole);
   vues.etabli.addEventListener('click', gesteDeLetabli);
