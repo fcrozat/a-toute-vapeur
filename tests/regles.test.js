@@ -29,10 +29,33 @@ const MACHINE = [
   'regulateur', 'crosse', 'bielle', 'roues', 'boite_a_fumee', 'soupape',
 ];
 
+// Le décor des réservoirs, écrit une fois depuis le billet #19 : les réservoirs sont
+// pleins **de ce que leur contenant peut tenir** (voir le meme commentaire dans
+// `tests/modele.test.js`). Un engin de test qui portait « 4000 » dans une soute de
+// 300 kg et une citerne de 240 L n'en est un possible que tant que la balance ignore
+// la réserve : depuis que le contenu pèse, il annoncerait 11,24 t au lieu de 3,78 t.
+const pleins = (engin) => {
+  engin.soute = engin.capacite('soute');
+  engin.citerne = engin.capacite('citerne');
+  return engin;
+};
+
+// Le meme decor que `tests/modele.test.js` : la reserve est tenue au plein de ce que le
+// contenant monté peut tenir, et rien n'est jamais verse dans un contenant qui n'est
+// pas la. Les promesses d'ici regardent la jauge, le soutage, la riviere et ce que la
+// machine dit quand elle a soif : celles-la ne demandent pas ce decor et ne le
+// reclament pas. Les autres — la choregraphie des trois calages, la table des
+// situations — tournent sur plusieurs minutes de temps machine pour observer autre
+// chose que la reserve, et un plein de citerne tient environ deux minutes au feu
+// d'enfer (mesure du billet #6 : 154 s sur la ligne de jeu, graine 1882).
+function ravitailler(engin) {
+  if (engin.pieces.soute) engin.soute = engin.capacite('soute');
+  if (engin.pieces.citerne) engin.citerne = engin.capacite('citerne');
+}
+
 function machineVapeur({ pieces = [], feu = 1, regulateur = 1 } = {}) {
   const engin = M.nouvelEngin([...MACHINE, ...pieces]);
-  engin.soute = 4000;   // on teste la conduite, pas la faim du foyer
-  engin.citerne = 4000;
+  pleins(engin);
   engin.commandes.feu = feu;
   engin.commandes.regulateur = regulateur;
   return engin;
@@ -40,9 +63,10 @@ function machineVapeur({ pieces = [], feu = 1, regulateur = 1 } = {}) {
 
 const plaine = (regles = {}) => M.nouveauMonde(regles);
 
-function rouler(engin, monde, { duree }) {
+function rouler(engin, monde, { duree, ravitaille = false } = {}) {
   let t = 0;
   while (t < duree) {
+    if (ravitaille) ravitailler(engin);
     M.pasDeTemps(engin, monde, PAS);
     t += PAS;
   }
@@ -50,10 +74,10 @@ function rouler(engin, monde, { duree }) {
 }
 
 // Chauffe, coup de barre, puis on la laisse faire : le geste du joueur, dans l'ordre.
-function demarrer(engin, monde, { chauffe = CHAUFFE, elan = 0.4, suite = 40 } = {}) {
-  rouler(engin, monde, { duree: chauffe });
+function demarrer(engin, monde, { chauffe = CHAUFFE, elan = 0.4, suite = 40, ravitaille = false } = {}) {
+  rouler(engin, monde, { duree: chauffe, ravitaille });
   engin.pousser(elan);
-  rouler(engin, monde, { duree: suite });
+  rouler(engin, monde, { duree: suite, ravitaille });
   return engin;
 }
 
@@ -120,8 +144,7 @@ function enginASec() {
 function enginEnDanger() {
   // La machine des treize pièces, moins sa soupape : rien ne limite plus la vapeur.
   const engin = M.nouvelEngin(MACHINE.filter((id) => id !== 'soupape'));
-  engin.soute = 4000;
-  engin.citerne = 4000;
+  pleins(engin);
   engin.commandes.feu = 1;
   engin.commandes.regulateur = 0;
   rouler(engin, plaine(), { duree: 90 });
@@ -479,10 +502,11 @@ function modeleAuxPasComptes() {
 
 // Les noms que l'écran affiche, image après image : à 20 images la seconde, comme
 // la boucle du jeu.
-function situationsVues(engin, monde, { pendant }) {
+function situationsVues(engin, monde, { pendant, ravitaille = false }) {
   const vues = [];
   let t = 0;
   while (t < pendant) {
+    if (ravitaille) ravitailler(engin);
     M.simuler(engin, monde, PAS_IMAGE);
     t += PAS_IMAGE;
     vues.push(R.situation(engin, monde));
@@ -544,16 +568,18 @@ test('le curseur du régulateur rend la commande du modèle, fermé compris', ()
 
 // Scène tenue à la main, côté règles : régulateur fermé à chaud.
 test('fermé à chaud, le régulateur prend la machine — et l’écran le dit', () => {
+  // La reserve est tenue au plein : ce qu'on regarde ici est la vapeur qu'on ferme,
+  // pas une chaudière qui s'éteint de soif au bout de deux minutes.
   const monde = plaine();
-  const engin = demarrer(machineVapeur(), monde);
+  const engin = demarrer(machineVapeur(), monde, { ravitaille: true });
   assert.equal(R.situation(engin, monde), 'roule', 'la machine ne roulait pas avant le geste');
 
   engin.commandes.regulateur = R.commandeDuCurseur(0);   // le chauffeur ferme à fond
 
   // La machine a son élan : elle roule encore un moment, se fait prendre, casse
   // une fois, puis reste prise. On regarde après qu'elle s'est rangée.
-  rouler(engin, monde, { duree: 10 });
-  const vues = situationsVues(engin, monde, { pendant: 20 });
+  rouler(engin, monde, { duree: 10, ravitaille: true });
+  const vues = situationsVues(engin, monde, { pendant: 20, ravitaille: true });
   const distanceEnPrise = engin.distance;
   assert.ok(
     vues.every((s) => s === 'cale'),
@@ -784,8 +810,7 @@ test('la table des situations est entière, et le plus grave donne le nom', () =
 
   // Sans soupape et prise à son point mort : la tôle travaille, c'est elle qui commande.
   const sansSoupape = M.nouvelEngin(MACHINE.filter((id) => id !== 'soupape'));
-  sansSoupape.soute = 4000;
-  sansSoupape.citerne = 4000;
+  pleins(sansSoupape);
   sansSoupape.commandes.feu = 1;
   sansSoupape.commandes.regulateur = R.commandeDuCurseur(0);
   rouler(sansSoupape, monde, { duree: 90 });
@@ -803,15 +828,24 @@ test('la table des situations est entière, et le plus grave donne le nom', () =
   assert.equal(R.situation(aSec, monde), 'sec', 'une chaudière à sec parle après le point mort');
 
   // Patine et soupape ouverte : la roue qui glisse passe avant le sifflement.
-  // Le réglage est monté de 0,5 à 0,66 : à 0,5 la rampe tenait la machine au
-  // point mort par une force qui n'existait pas — l'injecteur, soustrait sans
-  // égard au sens, poussait en arrière (cf. ADR 0009). À 0,66 elle grimpe, elle
-  // glisse, elle siffle, et elle n'est pas calée : les deux conditions vraies.
+  // Cette superposition est une crête, et le billet 19 l'a déplacée. Elle se
+  // jouait au milieu de la rampe, réglage à 0,66 — pas à 0,5, où l'injecteur,
+  // soustrait sans égard au sens, retenait la machine (cf. ADR 0009). Depuis que
+  // l'eau et le charbon pèsent, la pleine réserve ajoute 0,54 t : à 0,66 la charge
+  // cloue la machine à son point mort avant que la soupape souffle, et « cale »,
+  // plus grave, parle à la place de « patine » — ce que la machine fait là est
+  // bien de se tenir calée, ce n'est pas la superposition qu'on voulait montrer.
+  // On la joue donc à l'abordage : chaudière saturée par 90 s de feu d'enfer,
+  // réglage avare à 0,5, un coup de barre, et la rampe d'acier. Mesuré de la 3ᵉ à
+  // la 7ᵉ seconde après la barre, sur des pentes de 0,3 à 0,4 : les deux
+  // conditions sont vraies et `situation` dit « patine ». Elle emporte ce qu'il
+  // faut pour cela — 267 kg de charbon et 126 litres d'eau restantes à la 5ᵉ
+  // seconde, niveau d'eau à 1 : pas besoin de ravitaillement dans cette scène.
   const rampe = M.nouveauMonde({ pente: 0.3 });
-  const patineur = machineVapeur({ regulateur: 0.66 });
-  rouler(patineur, rampe, { duree: CHAUFFE });
+  const patineur = machineVapeur({ regulateur: 0.5 });
+  rouler(patineur, plaine(), { duree: 90 });
   patineur.pousser(4);
-  rouler(patineur, rampe, { duree: 60 });
+  rouler(patineur, rampe, { duree: 5 });
   assert.equal(patineur.machine.patine, true, 'cet engin ne patinerait pas : la superposition est ratée');
   assert.equal(patineur.chaudiere.soupapeSiffle, true, 'cet engin ne sifflerait pas : la superposition est ratée');
   assert.equal(R.situation(patineur, rampe), 'patine', 'le sifflement efface la roue qui patine');
@@ -1287,8 +1321,26 @@ test('toute pièce se démonte, rend sa masse, et ne touche ni au charbon ni à 
   assert.equal(engin.soute, souteAvante, 'démonter une pièce a rendu du charbon à la soute');
   assert.equal(engin.citerne, eauAvante, 'démonter une pièce a rendu de l’eau à la citerne');
 
+  // Ce que le geste rend, c'est la pièce **et ce qu'elle portait** : depuis le billet
+  // #19, l'eau d'une citerne descend avec la citerne. La promesse d'origine — rendre la
+  // masse de la pièce, ne rien toucher au charbon ni à l'eau, dont la ligne ci-dessus
+  // — reste écrite, toute seule, sur une citerne vide.
   const apres = R.etatDuJeu(engin, monde, memo);
-  assert.ok(Math.abs(masseAvante - apres.etabli.masse - 0.2) < 1e-9, `démonter une citerne de 200 kg laisse ${apres.etabli.masse} t au lieu de ${masseAvante - 0.2} t`);
+  const rendue = masseAvante - apres.etabli.masse;
+  const eauEmportee = eauAvante / 1000;   // un litre d'eau pèse un kilo
+  assert.ok(
+    Math.abs(rendue - (0.2 + eauEmportee)) < 1e-9,
+    `démonter une citerne de 200 kg et de ${eauAvante.toFixed(1)} L rend ${(rendue * 1000).toFixed(1)} kg au lieu de ${(200 + eauAvante).toFixed(1)} kg`
+  );
+
+  const cuve = demarrer(machineVapeur(), plaine());
+  cuve.citerne = 0;
+  const masseCuve = R.etatDuJeu(cuve, monde, memo).etabli.masse;
+  assert.equal(R.demonterPiece(cuve, memo, 'citerne'), true, 'létabli refuse une citerne vide');
+  assert.ok(
+    Math.abs(masseCuve - R.etatDuJeu(cuve, monde, memo).etabli.masse - 0.2) < 1e-9,
+    `démonter une citerne vide rend ${(masseCuve - R.etatDuJeu(cuve, monde, memo).etabli.masse).toFixed(4)} t au lieu de 0,2 t`
+  );
 
   const rang = apres.etabli.pieces.find((r) => r.id === 'citerne');
   assert.equal(rang.nombre, 0, "l'établi compte encore une citerne qui n'y est plus");
@@ -1993,8 +2045,7 @@ test('une situation qui se cherche a un mot qui la couvre', () => {
 // `machineVapeur` du fichier ajoute des pièces au catalogue, il n'en retire pas.
 function machineSansSoupape({ regulateur = 0 } = {}) {
   const engin = M.nouvelEngin(MACHINE.filter((id) => id !== 'soupape'));
-  engin.soute = 4000;
-  engin.citerne = 4000;
+  pleins(engin);
   engin.commandes.feu = 1;
   engin.commandes.regulateur = regulateur;
   return engin;
@@ -2186,15 +2237,23 @@ test('la projection écoute Braise sans rien décider', () => {
 const GAGS = ['eolipyle', 'fusee', 'remorque'];
 const FEU_MESURE = 0.5;
 const ROBINET_AVARE = 0.1;   // la vapeur est encore demandée : la fermer ne cale pas
+// Une barre toutes les 0,25 s et non plus toutes les secondes : depuis que
+// l'eau et le charbon pèsent (billet 19), la machine pleine reprend
+// `VITESSE_D_ROULER` en moins d'une seconde et l'a déjà perdue une seconde plus
+// tard — la troisième chute ne s'armait plus. Mesuré : douze barres sans reprise
+// à la cadence d'une seconde, trois calages de suite à 0,25 s (2, 1 puis 4
+// barres).
+const CADENCE_DE_LA_BARRE = 0.25;
 
 const roule = (engin) => Math.abs(engin.vitesse()) >= R.VITESSE_D_ROULER;
 
 // L'image du jeu, telle que la projection la compose : la physique avance, puis les
 // règles regardent. C'est `etatDuJeu` qui fait tourner `garage` — mener la machine
 // sans le consulter ne compte donc aucun fait.
-function jouer(engin, monde, memo, secondes, { sur = null, jusquA = null } = {}) {
+function jouer(engin, monde, memo, secondes, { sur = null, jusquA = null, ravitaille = false } = {}) {
   let dernier = null;
   for (let t = 0; t < secondes; t += PAS) {
+    if (ravitaille) ravitailler(engin);
     R.passerLImage(engin, monde, { duree: PAS });
     dernier = R.etatDuJeu(engin, monde, memo);
     if (sur) sur(dernier, engin);
@@ -2223,11 +2282,11 @@ function menerUnCalage(engin, monde, memo, attendu, sur) {
   engin.commandes.regulateur = 1;
   for (let i = 0; i < 12 && !roule(engin); i += 1) {
     R.coupDeBarre(engin, memo);
-    jouer(engin, monde, memo, 1, { sur });
+    jouer(engin, monde, memo, CADENCE_DE_LA_BARRE, { sur, ravitaille: true });
   }
   assert.ok(roule(engin), `la machine n'a pas repris ${R.VITESSE_D_ROULER} m/s : rien n'arme le calage n°${attendu}`);
   engin.commandes.regulateur = ROBINET_AVARE;
-  const etat = jouer(engin, monde, memo, 60, { sur, jusquA: (e) => e.garage.episodes.calage >= attendu });
+  const etat = jouer(engin, monde, memo, 60, { sur, ravitaille: true, jusquA: (e) => e.garage.episodes.calage >= attendu });
   assert.ok(etat && etat.garage.episodes.calage >= attendu,
     `le calage n°${attendu} n'arrive pas : la machine ne s'est pas tenue deux secondes au point mort`);
   return etat;
@@ -2237,7 +2296,7 @@ function menerUnCalage(engin, monde, memo, attendu, sur) {
 // du foyer. Il sort de la chauffe sans avoir calé — le lancement n'est pas un fait.
 function enginDeChauffe(monde, { feu = FEU_MESURE } = {}) {
   const engin = machineVapeur({ feu });
-  jouer(engin, monde, R.nouvelleMemo(), CHAUFFE);
+  jouer(engin, monde, R.nouvelleMemo(), CHAUFFE, { ravitaille: true });
   return engin;
 }
 
@@ -2456,8 +2515,7 @@ test('aucune pièce du garage ne demande autre chose que sa masse', () => {
 
   const monde = plaine();
   const engin = M.nouvelEngin(R.PIECES_DE_BASE);
-  engin.soute = 4000;
-  engin.citerne = 4000;
+  pleins(engin);
   const etat = R.etatDuJeu(engin, monde, memo);
   for (const clef of Object.keys(etat)) assert.doesNotMatch(clef, interdit, `l’état du jeu rend un compte de bourse : ${clef}`);
   for (const rang of etat.etabli.pieces) {
@@ -2471,8 +2529,8 @@ test('aucune pièce du garage ne demande autre chose que sa masse', () => {
       const memoOuverte = R.nouvelleMemo();
       memoOuverte.deblocages.push(id);
       const machine = M.nouvelEngin(R.PIECES_DE_BASE);
-      machine.soute = 4000;
-      machine.citerne = 4000;
+      pleins(machine);
+      const chargeAvant = { soute: machine.soute, citerne: machine.citerne };
       const avant = R.etatDuJeu(machine, monde, memoOuverte);
       const bruleAvant = machine.charbonBrule;
 
@@ -2480,8 +2538,8 @@ test('aucune pièce du garage ne demande autre chose que sa masse', () => {
 
       const apres = R.etatDuJeu(machine, monde, memoOuverte);
       assert.equal(machine.charbonBrule, bruleAvant, `brancher « ${id} » a brûlé du charbon`);
-      assert.equal(machine.soute, 4000, `brancher « ${id} » a pris du charbon à la soute`);
-      assert.equal(machine.citerne, 4000, `brancher « ${id} » a pris de l’eau à la citerne`);
+      assert.equal(machine.soute, chargeAvant.soute, `brancher « ${id} » a pris du charbon à la soute`);
+      assert.equal(machine.citerne, chargeAvant.citerne, `brancher « ${id} » a pris de l’eau à la citerne`);
       const attendue = avant.etabli.masse + M.CATALOGUE[id].masse;
       assert.ok(Math.abs(apres.etabli.masse - attendue) < 1e-9,
         `brancher « ${id} » rend ${apres.etabli.masse} t au lieu de ${attendue} t : sa monnaie n'est pas sa masse`);

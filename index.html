@@ -483,10 +483,31 @@ const modeleVapeur = (() => {
       capacite(id) {
         return (this.pieces[id] || 0) * (CATALOGUE[id]?.capacite || 0);
       },
+      // Ce que pèse la machine (billet #19, « ce qu'on embarque pèse ») : le châssis,
+      // les pièces montées dessus, et ce que les contenants montés contiennent.
+      //
+      // La règle, à énoncer comme telle parce qu'elle est une décision et pas une
+      // évidence : **un contenu ne pèse que si son contenant est monté.** Retirer la
+      // soute, c'est perdre l'accès au charbon (#18) ET rendre 300 kg à la rampe, en
+      // un seul coup ; la remonter récupère les deux. C'est la même raison dans les
+      // deux sens — le charbon d'une soute qui n'est plus là ne vit nulle part —, et
+      // elle répond du même coup à la question restée ouverte du #18 : « où vit l'eau
+      // d'une chaudière qui n'existe plus ? » Nulle part, donc elle ne pèse pas.
+      //
+      // Le poids se lit donc aux deux mêmes accesseurs que la jauge et que le foyer
+      // (`charbonDisponible`, `eauDisponible`) : « vide à la jauge » et « ne pèse
+      // plus » ne pourront plus se contredire, comme ils le faisaient depuis le #8.
+      //
+      // Unités — le piège du billet : le catalogue pèse en tonnes, la soute se compte
+      // en kilos de charbon et la citerne en litres d'eau. **1 litre d'eau = 1 kilo**
+      // (masse volumique usuelle de l'eau, retenue telle quelle par le jeu) : c'est
+      // ce qui permet de traiter les deux réserves d'une seule somme, et ce n'est une
+      // évidence ni pour un élève de CM2 ni pour qui relira ce fichier dans six mois.
+      // Le `/ 1000` rend le tout en tonnes, comme le châssis et les pièces.
       masseTotale() {
         let m = 0.4; // le châssis
         for (const id of this.ordre) m += CATALOGUE[id].masse * this.pieces[id];
-        return m;
+        return m + (this.charbonDisponible() + this.eauDisponible()) / 1000;
       },
       inertie() {
         let i = INERTIE_MACHINE;
