@@ -3160,6 +3160,11 @@ const reglesDuJeu = (() => {
   // La masse embarquée, en tonnes et avec deux décimales : cinq des treize pièces de
   // l'engin d'ouverture coûtent moins d'un dixième, et la monnaie du garage serait
   // muette à un chiffre. C'est un choix de lecture, pas une précision de plus du modèle.
+  //
+  // Le billet #19 ajoute un mot au passage de la souris : la pleine charge ralentit les
+  // départs en rampe, mesuré et non décrété (la remorque coûte des mètres dans la côte,
+  // à eau et feu égaux). Ce qui se lit au doigt ne se redit pas en toutes lettres à
+  // l'écran — Braise est là pour nommer, le nombre est là pour mesurer.
   function motsDeMasse(tonnes) {
     return `${tonnes.toFixed(2).replace('.', ',')} t`;
   }

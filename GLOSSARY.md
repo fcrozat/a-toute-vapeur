@@ -81,7 +81,11 @@ Se dit d'une pièce que le modèle ne sent que par sa masse, et dont la masse n'
 _Avoid_ : verrouillée (une pièce verrouillée ne se montre pas), inutile, décorative (elle pèse), cachée
 
 **Masse embarquée**:
-Ce que pèse l'engin, châssis et pièces montées dessus compris : la monnaie du garage, et ce que l'élève voit bouger quand il branche. En tonnes, avec deux décimales : cinq des treize pièces du départ coûtent moins d'un dixième, et la monnaie doit se voir.
+Ce que pèse l'engin, châssis, pièces montées dessus et **ce que les contenants montés contiennent** compris : la monnaie du garage, et ce que l'élève voit bouger quand il branche, remplit ou brûle. En tonnes, avec deux décimales : cinq des treize pièces du départ coûtent moins d'un dixième, et la monnaie doit se voir.
+
+Une soute démontée ne pèse ni sa tôle ni son contenu, dans cet ordre et pour la même raison : le charbon d'une soute qui n'est plus là ne vit nulle part. Un litre d'eau pèse un kilo (masse volumique usuelle, retenue telle quelle par le jeu).
+
+Ce que la masse change, et que l'élève peut mesurer : plus la machine est lourde, plus son inertie la retient au démarrage, plus l'adhérence des roues lui donne de prise, et plus la rampe lui coûte de mètres — à feu et régulateur égaux, la remorque (800 kg de lest pur) lui vole des mètres dans la côte.
 _Avoid_ : poids (au sens physique du terme), élan (l'élan est la masse en mouvement, pas ce que l'on monte), taille
 
 ### La machine à vapeur
