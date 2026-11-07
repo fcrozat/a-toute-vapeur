@@ -2544,6 +2544,31 @@ test('le feuillet de relecture du billet dit ce que le code dit', () => {
       assert.ok(rangee.includes(M.CATALOGUE[id].nom), `la ligne « ${declic.fait} » ne nomme pas « ${id} »`);
     }
   }
-  // Ce que la ligne du jeu ne produit pas est écrit, pas tu.
-  assert.match(feuillet, /second cylindre ne s'ouvre|ne s’ouvre jamais/);
+  // Ce que la ligne du jeu ne produit pas est écrit, pas tu. La garde ne tient pas
+  // à une phrase mot à mot — le générateur a le droit de la reformuler, et il l'a
+  // reformulée une fois déjà. Elle tient au nombre : dans la section des ouvertures
+  // qui ne viennent pas, la ligne du calage doit montrer un meilleur score resté
+  // sous son seuil, et le second cylindre doit y être nommé.
+  const sectionDesManques = feuillet.slice(feuillet.indexOf('## 6.'));
+  assert.ok(sectionDesManques.length > 80 && feuillet.includes('## 6.'),
+    'le feuillet n’a plus de section sur ce qui ne s’ouvre pas sur la ligne du jeu');
+  assert.match(sectionDesManques, /second cylindre/,
+    'le second cylindre n’est plus nommé là où le feuillet dit ce que la ligne ne rencontre pas');
+  const ligneDeCalage = sectionDesManques.split('\n').find((l) => l.startsWith('|calage|'));
+  assert.ok(ligneDeCalage, 'la table des manques n’a plus de ligne « calage »');
+  const colonnesDeManque = ligneDeCalage.split('|').map((c) => c.trim());
+  const seuilAnnonce = Number(colonnesDeManque[2]);
+  const seuilDuModele = R.TABLE_DU_GARAGE.find((d) => d.fait === 'calage').seuil;
+  assert.ok(seuilAnnonce === seuilDuModele, `la table des manques annonce un seuil de ${seuilAnnonce}, la table du garage veut ${seuilDuModele}`);
+  // Le score mesuré doit rester un score mesuré, de la forme n/seuil, et non une
+  // impression tapée à la main. On ne vérifie PAS qu'il reste sous le seuil : si une
+  // autre ligne du jeu vient à produire les trois chutes, ce nombre doit bouger sans
+  // casser une promesse — c'est la mesure d'en face qui dira si la porte s'est ouverte.
+  assert.match(colonnesDeManque[3], /^\d+\/\d+$/,
+    `« ${colonnesDeManque[3]} » n'est pas un score mesuré de la forme n/Seuil`);
+  assert.ok(Number(colonnesDeManque[3].split('/')[1]) === seuilDuModele,
+    'le dénominateur du score mesuré a glissé hors de la table du garage');
+  const nomDuCylindre = M.CATALOGUE.second_cylindre.nom;
+  assert.ok(colonnesDeManque[colonnesDeManque.length - 2] === nomDuCylindre,
+    `la ligne des manques doit nommer « ${nomDuCylindre} »`);
 });

@@ -135,12 +135,13 @@ rencontre pas tous.
 |riviere|1|1/1|Pompe|
 |vent|1|1/1|Éolienne + Voile|
 
-- **le second cylindre ne s'ouvre jamais sur la ligne du jeu** : aucune des six mains ne l'a
-  ouvert, et le meilleur score de chutes tenues reste 1/3 — en deux cents
-  secondes comme en une heure (mesure longue consignée avec le billet). Il
-  ne s'ouvre que si l'enfant cherche le point mort trois fois de suite, ce que la section 5
-  joue à la main. Un enfant qui ne le cherche pas ne verra pas la pièce : c'est le risque
-  assumé du « par le problème », à trancher au regard, pas au seuil.
+- **le second cylindre n'ouvre pas sous une main qui laisse le robinet ouvert** : aucune des
+  six mains mesurées ici ne l'a ouvert, et le meilleur score de chutes tenues reste
+  1/3 — en deux cents secondes comme en une heure (mesure longue consignée
+  avec le billet). Ce n'est pas une porte fermée : la section 8 joue les trois chutes à
+  l'écran, avec le seul doigt d'un enfant, et la pièce s'y ouvre. Ce que ces six mains ne
+  font pas, c'est refermer le robinet pour la laisser s'asseoir. Un enfant qui ne cherche
+  pas le point mort ne verra pas la pièce : c'est le risque assumé du « par le problème ».
 - la soute vide (0/1) attend le charbonnage : les pleins du catalogue tiennent
   au-delà de deux cents secondes sur la ligne. La pièce est branchable, sa condition est rare.
 
@@ -164,7 +165,40 @@ relancer. À juger au regard — c'est une punition automatique qui ressemble à
 une leçon. La promesse du bercement est jouée à feu d'enfer exprès : c'est là que la parole
 bascule le plus.
 
-## 8. Ce que les promesses gardent
+## 8. À l'écran, avec le seul doigt d'un enfant
+
+Tout ce feuillet est écrit à la couture des règles. Le billet demandait aussi l'image : elle
+a été jouée dans la page, Playwright en tête-à-tête, Playwright et son chromium restés au
+cache de travail — le dépôt ne reçoit que des PNG. La page pilotée est la copie de travail
+du cache, c'est-à-dire `index.html` plus UNE fonction de lecture seule qui rend ce que le
+garage compte, l'écran seul ne l'affichant pas. Le geste n'a rien de plus que les trois
+commandes de l'enfant :
+
+1. chauffer robinet fermé, à feu 0,2 ;
+2. reprendre robinet grand ouvert, la barre secouée toutes les 0,4 s de machine ;
+3. fermer le robinet à fond pour qu'elle s'assoie ;
+4. la rouvrir d'un cheveu — `estPrise` veut la vapeur demandée — et plus rien toucher
+   pendant trois secondes de machine ;
+5. recommencer. Et si elle ne repart pas, laisser le robinet fermé six secondes : c'est la
+   vapeur neuve que le robinet admet qui la plaque contre son point mort, fermée elle se
+   vide par l'échappement et la barre reprend prise.
+
+|moment|secondes de machine|à l'écran|
+|---|---|---|
+|deux chutes tenues|56 s|« Calée », 0,0 km/h, 6,1 bars — capture-10-avant.png|
+|la troisième s'achève|61 s|Braise dit la phrase d'ouverture — capture-10-ouverture.png|
+|le garage ouvert|61 s|le « Second cylindre » est sur l'établi — capture-10-etabli.png|
+|la pièce branchée|62 s|masse 3,2 t → 3,6 t — capture-10-montee.png|
+
+La phrase, telle que la page l'a rendue : « Trois fois prise à son point mort : le garage a
+ouvert un second cylindre, lancé à quatre-vingt-dix degrés du premier. » La pièce arrive
+montée d'office sur la machine — c'est une structurelle : le bouton qui reste sur l'établi
+est « Brancher », et la masse passe de 3,2 t à 3,6 t.
+Ce que la section 7 mesurait reste vrai, et l'écran le dit mieux que la couture : à ne pas
+refermer le robinet, une seule chute tenue suffit à la verrouiller et plus rien ne la fait
+repartir. Ce n'est pas le seuil qui est dur, c'est la vapeur comprimée.
+
+## 9. Ce que les promesses gardent
 
 10 promesses écrites à la fin de `tests/regles.test.js`, dans le bloc « Le garage
 s'agrandit par le problème ». `tests/modele.test.js` n'a pas bougé d'un caractère.
