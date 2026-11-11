@@ -46,6 +46,11 @@
        menu à apprendre pour rien. */
     #pompe { min-height: 48px; min-width: 150px; border-radius: 10px; border: 1px solid #55636f; background: #232a33; color: inherit; font: inherit; }
     #pompe[aria-pressed="true"] { background: #6d93a6; color: #171b21; border-color: #6d93a6; }
+    /* Les trois boutons nés après l'audit (#11, #12, #14) portent la même cible de
+       48 px que la barre et la pompe : un pouce d'enfant ne vise pas un bouton de
+       23 px. Leur état embrayé se lit au fond, comme la pompe et les paliers. */
+    #marche-arriere, #circuit, #recommencer { min-height: 48px; min-width: 120px; border-radius: 10px; border: 1px solid #55636f; background: #232a33; color: inherit; font: inherit; }
+    #marche-arriere[aria-pressed="true"], #circuit[aria-pressed="true"] { background: #6d93a6; color: #171b21; border-color: #6d93a6; }
     /* Les paliers du temps : trois boutons, trois cibles de 48 px. */
     #vitesse-temps { margin: 0; display: flex; align-items: center; gap: 8px; }
     .palier { min-height: 48px; min-width: 62px; border-radius: 10px; border: 1px solid #55636f; background: #232a33; color: inherit; font: inherit; font-variant-numeric: tabular-nums; }
