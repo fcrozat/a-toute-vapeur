@@ -928,12 +928,16 @@ test('la mémoire du jeu s’ouvre vide', () => {
   // Les trois cases vides d'avant, et depuis le billet #7 la mémoire de Braise, qui
   // s'ouvre vide elle aussi : rien de dit, rien de refroidi, aucun mot retenu. Le
   // détail de ses cases est promis plus bas, là où sa parole se décide.
-  const { braise, garage, ...leReste } = memo;
+  const { braise, garage, essais, essai, ...leReste } = memo;
   assert.deepEqual(leReste, {
     refroidissements: {}, deblocages: [], meilleurRendement: null,
   });
   assert.equal(Object.keys(memo.refroidissements).length, 0, 'la mémoire porte déjà des refroidissements');
   assert.equal(memo.deblocages.length, 0, 'la mémoire débloque déjà des pièces');
+  // Le registre des essais (billet #13) s'ouvre vide lui aussi : aucun essai clos,
+  // aucun essai en cours. Le tableau compare ce qui se joue, pas un départ.
+  assert.deepEqual(essais, [], 'la mémoire porte déjà des essais clos');
+  assert.equal(essai, null, 'un essai est déjà ouvert avant le lever de rideau');
   // Le garage du billet #10 s'ouvre vide lui aussi : rien suivi, rien compté, aucune
   // phrase en file. Une ouverture est un fait rencontré, pas un état de départ.
   assert.deepEqual(garage.suivis, {}, 'le garage suit déjà des faits');
@@ -3091,4 +3095,136 @@ test('Braise nomme le circuit fermé une fois, et ne propose aucune réparation'
   // Aucune réparation proposée : la ligne nomme, elle n'ordonne pas.
   assert.doesNotMatch(R.PAROLES.meme_eau, /appuie|branche|remonte|répare|démonte/,
     'la ligne du circuit propose une réparation');
+});
+
+// --- Billet #13 : rivales et gags, chacun son compte, et le tableau -----------
+
+test('le vent se dit là où il souffle, et seulement là', () => {
+  // Hors de la vallée ventée, l'air est calme et l'éolienne comme la voile ne
+  // rendent rien : l'écran le dit en un mot, pas en aiguille.
+  const plat = plaine();
+  const engin = machineVapeur();
+  assert.equal(R.ventDit(engin, plat).mot, 'calme', 'le plat n’est pas calme');
+  assert.equal(R.ventDit(engin, plat).force, 0, 'le plat souffle');
+
+  // La vallée du jeu, posée sous les roues : le mot du garage et le mot de
+  // l'écran sont le même vent (VENT_DUNE_VALLEE).
+  const vallee = M.nouveauMonde({ vent: { a: 0, longueur: 100, force: 0.88 } });
+  const dit = R.ventDit(engin, vallee);
+  assert.equal(dit.mot, 'vent de la vallée', `dans la vallée, l'écran dit « ${dit.mot} »`);
+  assert.ok(dit.force >= R.VENT_DUNE_VALLEE, 'le vent de la vallée est sous le seuil du garage');
+
+  // Une brise trop faible pour le garage reste une brise à l'écran.
+  const brise = M.nouveauMonde({ vent: { a: 0, longueur: 100, force: 0.2 } });
+  assert.equal(R.ventDit(engin, brise).mot, 'brise', 'une brise est dite calme ou vallée');
+
+  // Et la vallée loin devant les roues n'est pas encore du vent.
+  const loin = M.nouveauMonde({ vent: { a: 500, longueur: 10, force: 0.88 } });
+  assert.equal(R.ventDit(engin, loin).mot, 'calme', 'la vallée loin devant souffle déjà aux roues');
+
+  // L'écran rend le mot et les traînées : la projection ne devine ni l'un ni l'autre.
+  const source = sourceProjection();
+  assert.match(source, /vent-dit/, 'la ligne du vent n’est pas dans la projection');
+  assert.match(source, /dessineLeVent/, 'le vent ne se voit pas : aucune traînée dessinée');
+});
+
+test('chaque rivale mange son propre compte, et brancher ne remplit rien', () => {
+  // Rien n'est gratuit, et rien n'entre en trompant l'élève : monter une rivale
+  // ou un gag ne touche ni la soute, ni la citerne, ni la musette, ni le réservoir
+  // de propergol.
+  const memo = R.nouvelleMemo();
+  memo.deblocages.push('cheval', 'fusee', 'eolienne', 'voile', 'roue_a_eau');
+  for (const id of ['cheval', 'fusee', 'eolienne', 'voile', 'roue_a_eau', 'remorque', 'eolipyle']) {
+    const engin = machineVapeur();
+    const avant = { soute: engin.soute, citerne: engin.citerne, avoine: engin.avoine, propergol: engin.propergol };
+    R.brancherPiece(engin, memo, id);
+    assert.equal(engin.soute, avant.soute, `brancher « ${id} » a pris du charbon`);
+    assert.equal(engin.citerne, avant.citerne, `brancher « ${id} » a pris de l'eau`);
+    assert.equal(engin.avoine, avant.avoine, `brancher « ${id} » a rempli la musette`);
+    assert.equal(engin.propergol, avant.propergol, `brancher « ${id} » a rempli la fusée`);
+  }
+
+  // Le cheval mange à la mesure de son tirage, et s'arrête quand la musette est
+  // vide : l'avoine ne fait que descendre, et la distance plafonne avec elle.
+  const cheval = machineVapeur({ pieces: ['cheval'], feu: 0 });
+  const monde = plaine();
+  rouler(cheval, monde, { duree: 40 });
+  cheval.pousser();
+  let precedente = cheval.avoine;
+  let distanceAuVide = null;
+  for (let t = 0; t < 240; t += 1) {
+    rouler(cheval, monde, { duree: 1 });
+    assert.ok(cheval.avoine <= precedente, `la musette a remonté : ${precedente} puis ${cheval.avoine}`);
+    if (distanceAuVide === null && cheval.avoine <= 0) distanceAuVide = cheval.distance;
+    precedente = cheval.avoine;
+  }
+  assert.equal(cheval.avoine, 0, 'la musette ne se vide jamais tout à fait');
+  assert.ok(distanceAuVide !== null, 'le cheval n’a pas épuisé sa musette en quatre minutes');
+  rouler(cheval, monde, { duree: 30 });
+  // Musette vide, le cheval ne tire plus : ce qui reste est l'élan de la machine,
+  // pas un tirage. Tiré, le cheval faisait environ douze mètres en trente secondes ;
+  // sur son élan il en fait moins de deux avant de s'asseoir. Le seuil sépare les
+  // deux, il ne mesure pas un arrêt au centimètre.
+  assert.ok(Math.abs(cheval.distance - distanceAuVide) < 2,
+    `le cheval tire encore musette vide : ${distanceAuVide.toFixed(1)} puis ${cheval.distance.toFixed(1)} m`);
+});
+
+test('la fusée pousse jusqu’au bout de son propergol, puis se tait', () => {
+  const fusee = machineVapeur({ pieces: ['fusee'], feu: 0 });
+  fusee.commandes.fusee = 1;
+  const monde = plaine();
+  rouler(fusee, monde, { duree: 40 });
+  fusee.pousser();
+  rouler(fusee, monde, { duree: 80 });
+  assert.equal(fusee.propergol, 0, 'le propergol ne s’épuise pas');
+  const auVide = fusee.distance;
+  rouler(fusee, monde, { duree: 60 });
+  assert.ok(Math.abs(fusee.distance - auVide) < 0.5,
+    `la fusée pousse encore à sec : ${auVide.toFixed(1)} puis ${fusee.distance.toFixed(1)} m`);
+});
+
+test('le tableau des essais compare les appétits, et ne cache pas que la rivale gagne', () => {
+  // Le trajet donné est le plat, deux cents secondes : la vapeur va plus loin,
+  // mais le cheval rend plus de mètres par kilo mangé. Mesuré, pas décrété —
+  // et le tableau le montre au lieu de le taire.
+  const monde = plaine();
+  const memo = R.nouvelleMemo();
+
+  const vapeur = machineVapeur();
+  R.ouvrirEssai(vapeur, memo);
+  rouler(vapeur, monde, { duree: 40 });
+  vapeur.pousser();
+  rouler(vapeur, monde, { duree: 200 });
+  const essaiVapeur = R.cloreEssai(vapeur, memo);
+
+  const cheval = machineVapeur({ pieces: ['cheval'], feu: 0 });
+  R.ouvrirEssai(cheval, memo);
+  rouler(cheval, monde, { duree: 40 });
+  cheval.pousser();
+  rouler(cheval, monde, { duree: 200 });
+  const essaiCheval = R.cloreEssai(cheval, memo);
+
+  assert.ok(essaiVapeur && essaiCheval, 'un essai ne s’est pas clos');
+  assert.equal(essaiVapeur.tire, 'Machine à vapeur', `le premier essai n’est pas nommé « ${essaiVapeur.tire} »`);
+  assert.equal(essaiCheval.tire, 'Cheval', `le second essai n’est pas nommé « ${essaiCheval.tire} »`);
+
+  // La vapeur gagne le chemin…
+  assert.ok(essaiVapeur.chemin > essaiCheval.chemin,
+    `le cheval va plus loin que la vapeur sur le plat (${essaiCheval.chemin.toFixed(1)} contre ${essaiVapeur.chemin.toFixed(1)}) : le trajet donné ne distingue plus rien`);
+  // …et le cheval gagne l'appétit : c'est le résultat que le jeu ne cache pas.
+  assert.ok(essaiCheval.mParKg > essaiVapeur.mParKg,
+    `le cheval ne rend que ${essaiCheval.mParKg.toFixed(2)} m par kilo contre ${essaiVapeur.mParKg.toFixed(2)} à la vapeur : le tableau n'aurait rien à montrer`);
+
+  // L'état du jeu rend les deux lignes, telles que le tableau les montrera.
+  const lignes = R.etatDuJeu(vapeur, monde, memo).essais;
+  assert.equal(lignes.length, 2, 'l’état du jeu ne rend pas les deux essais');
+  assert.deepEqual(lignes.map((l) => l.tire), ['Machine à vapeur', 'Cheval']);
+  for (const ligne of lignes) {
+    assert.ok(Number.isFinite(ligne.chemin) && Number.isFinite(ligne.mange), 'une ligne du tableau rend un compte muet');
+  }
+
+  // Le tableau et son mot « gagne » sont dans la projection, pas dans ma tête.
+  const source = sourceProjection();
+  assert.match(source, /table-des-essais/, 'le tableau des essais n’est pas dans la projection');
+  assert.match(source, /gagne/, 'le jeu ne dit pas quand une rivale gagne');
 });

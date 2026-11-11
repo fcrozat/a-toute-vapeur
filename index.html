@@ -61,8 +61,13 @@
     #aide { margin: 0; color: #9aa7b3; font-size: .85rem; }
     /* Le garage : un tiroir de cibles de 48 px, deux colonnes quand l'écran s'y prête. */
     #garage { display: grid; gap: 8px; }
-    #garage-ouvrir { min-height: 48px; min-width: 150px; border-radius: 10px; border: 1px solid #55636f; background: #232a33; color: inherit; font: inherit; }
-    #garage-ouvrir[aria-expanded="true"] { background: #efe7d8; color: #171b21; border-color: #efe7d8; }
+    #garage-ouvrir, #essais-ouvrir { min-height: 48px; min-width: 150px; border-radius: 10px; border: 1px solid #55636f; background: #232a33; color: inherit; font: inherit; }
+    #garage-ouvrir[aria-expanded="true"], #essais-ouvrir[aria-expanded="true"] { background: #efe7d8; color: #171b21; border-color: #efe7d8; }
+    /* Le tableau des essais (billet #13) : des chiffres alignés, pas des barres
+       colorées — le plus sobre se lit au mot « gagne », pas à une nuance. */
+    #table-des-essais { border-collapse: collapse; width: 100%; font-variant-numeric: tabular-nums; }
+    #table-des-essais[hidden] { display: none; }
+    #table-des-essais th, #table-des-essais td { text-align: left; padding: 6px 10px; border-bottom: 1px solid #2a3038; font-weight: normal; }
     #etabli { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); }
     /* Un `display` écrit ici gagne sur l'attribut `hidden` : le tiroir fermé
        le redit, sinon les lignes restent à l'écran. */
@@ -122,6 +127,14 @@
       <!-- Le bord de route : ce que l'équipage soutire, ou ce qui lui manque pour
            le faire. Un mot, pas une couleur, pas une aiguille à interpréter. -->
       <p class="compte"><span class="etiquette">Soutage</span><span id="soutage-dit">—</span></p>
+      <!-- Le vent au droit des roues, en un mot (billet #13) : l'éolienne et la
+           voile ne rendent que là où il souffle, et l'enfant le lit avant de le
+           chercher. -->
+      <p class="compte"><span class="etiquette">Vent</span><span id="vent-dit">calme</span></p>
+      <!-- Les comptes propres des rivales (billet #13) : chacun ne se montre
+           qu'avec la pièce qui le mange. -->
+      <p class="compte" id="compte-musette" hidden><span class="etiquette">Musette</span><span id="musette-dite">10 kg</span></p>
+      <p class="compte" id="compte-propergol" hidden><span class="etiquette">Propergol</span><span id="propergol-dit">20 kg</span></p>
       <p class="compte"><span class="etiquette">Masse embarquée</span><span id="masse-dite">0 t</span></p>
       <p class="compte"><span class="etiquette">Rendement</span><span id="rendement-dit">—</span></p>
     </section>
@@ -132,6 +145,18 @@
     <section id="garage" aria-label="Garage">
       <p><button id="garage-ouvrir" type="button" aria-expanded="false" aria-controls="etabli">Garage — les pièces de l’engin</button></p>
       <ul id="etabli" hidden></ul>
+    </section>
+    <!-- Les essais comparés (billet #13) : ce qui s'est vraiment joué, en tiroir.
+         Une ligne par essai clos, et le jeu ne cache pas qu'une rivale gagne
+         parfois : le mot « gagne » est écrit sur la ligne la plus sobre. -->
+    <section id="essais" aria-label="Les essais">
+      <p><button id="essais-ouvrir" type="button" aria-expanded="false" aria-controls="table-des-essais">Les essais</button></p>
+      <table id="table-des-essais" hidden>
+        <thead>
+          <tr><th scope="col">Ce qui tire</th><th scope="col">Chemin</th><th scope="col">Mangé</th><th scope="col">Mètres par kilo</th></tr>
+        </thead>
+        <tbody></tbody>
+      </table>
     </section>
     <p id="aide">Souris, doigt ou flèches sur les barres de feu et de régulateur · Espace&nbsp;: un coup de barre · 1, 2, 4&nbsp;: la vitesse du temps · P&nbsp;: pause · G&nbsp;: le garage</p>
   </main>
@@ -1135,7 +1160,82 @@ const reglesDuJeu = (() => {
       tours: engin.machine.tours,
       charbonBrule: engin.charbonBrule,
       secondes: engin.tempsEcoule,
+      // Les comptes propres des rivales (billet #13) : l'avoine du cheval, le
+      // propergol de la fusée. Rien n'est gratuit : chacun ne fait que descendre,
+      // et l'écran ne les montre qu'avec la pièce qui les mange.
+      avoine: engin.avoine,
+      propergol: engin.propergol,
     };
+  }
+
+  // --- Le vent, tel que l'écran le dit (billet #13) --------------------------
+  // Le monde ne rend le vent qu'au droit des roues (`mondeSousLesRoues`) : hors de
+  // la vallée ventée, c'est zéro, et l'éolienne comme la voile ne rendent rien.
+  // L'écran en fait un mot, pas une aiguille à interpréter : trois marches, et la
+  // vallée nommée telle telle. Le seuil de la vallée est celui du garage
+  // (VENT_DUNE_VALLEE, déclaré plus bas avec la table du garage) : ce que le
+  // garage compte et ce que l'écran dit sont le même vent. Ne pas confondre avec
+  // `ventVu(vent)`, la vue de région qui sert au dessin : celle-ci dit le mot.
+  function ventDit(engin, monde) {
+    const sous = mondeSousLesRoues(engin, monde);
+    const force = sous && typeof sous.vent === 'number' ? sous.vent : 0;
+    let mot = 'calme';
+    if (force >= VENT_DUNE_VALLEE) mot = 'vent de la vallée';
+    else if (force >= 0.05) mot = 'brise';
+    return { force, mot };
+  }
+
+  // --- Les essais comparés (billet #13) --------------------------------------
+  // Un essai est une séance entre deux gestes d'établi (ou le lancement) : ce qui
+  // tire, le chemin fait, ce qui a été mangé pour le faire. Le tableau ne compare
+  // pas des promesses, il compare ce qui s'est vraiment joué — et il ne cache pas
+  // qu'une rivale gagne parfois : mesuré sur le plat, le cheval rend 7,6 m par kilo
+  // d'avoine et la fusée 6,0 m par kilo de propergol, contre 2,5 m par kilo de
+  // charbon pour la vapeur. La vapeur gagne le chemin, elles gagnent l'appétit.
+  //
+  // Le mot « rendement » reste celui du jeu (distance par charbon brûlé, ADR 0004) ;
+  // ce que le tableau compte s'appelle « mètres par kilo » : le chemin par kilo de
+  // ce que le montage a mangé, charbon, avoine ou propergol confondus.
+  function ouvrirEssai(engin, memo) {
+    if (!memo) return null;
+    memo.essai = {
+      distance: engin.distance,
+      charbon: engin.charbonBrule,
+      avoine: engin.avoine,
+      propergol: engin.propergol,
+      temps: engin.tempsEcoule,
+    };
+    return memo.essai;
+  }
+
+  // Ce qui tire, en mots du métier : les pièces ajoutées à l'engin d'ouverture,
+  // ou la machine à vapeur seule si rien ne s'y est ajouté.
+  function tireDuMontage(engin) {
+    const ajoutees = Object.keys(engin.pieces)
+      .filter((id) => engin.pieces[id] > 0 && !PIECES_DE_BASE.includes(id));
+    if (!ajoutees.length) return 'Machine à vapeur';
+    return ajoutees.sort().map((id) => modeleVapeur.CATALOGUE[id].nom).join(' + ');
+  }
+
+  function cloreEssai(engin, memo) {
+    if (!memo || !memo.essai) return null;
+    const d = memo.essai;
+    const chemin = engin.distance - d.distance;
+    const mange = Math.max(0, engin.charbonBrule - d.charbon)
+      + Math.max(0, d.avoine - engin.avoine)
+      + Math.max(0, d.propergol - engin.propergol);
+    memo.essai = null;
+    // Un essai qui n'a ni chemin ni appétit n'apprend rien : il n'entre pas.
+    if (chemin < 0.05 && mange < 0.01) return null;
+    const essai = {
+      tire: tireDuMontage(engin),
+      chemin,
+      mange,
+      mParKg: mange > 0.01 ? chemin / mange : null,
+      secondes: engin.tempsEcoule - d.temps,
+    };
+    memo.essais.push(essai);
+    return essai;
   }
 
   // Un réservoir embarqué : ce qu'il contient, ce qu'il pourrait contenir, la part
@@ -1900,6 +2000,10 @@ const reglesDuJeu = (() => {
         aDire: null,         // la phrase d'une ouverture qui attend son tour
       },
       meilleurRendement: null,
+      // Le registre des essais comparés (billet #13) : les séances closes, et
+      // celle qui se joue en ce moment. Ni un score ni une monnaie : un carnet.
+      essais: [],
+      essai: null,
       braise: {
         muet: false,
         vue: null,
@@ -2341,6 +2445,11 @@ const reglesDuJeu = (() => {
       // Ce que le bord de route dit du charbon et de l'eau. La projection écrit
       // ce mot, elle ne le devine pas : le soutage est une règle, pas un dessin.
       soutage: soutageVu(engin, monde),
+      // Le vent au droit des roues, en mot (billet #13) : calme, brise, ou la
+      // vallée nommée. L'éolienne et la voile ne rendent que là où il souffle.
+      vent: ventDit(engin, monde),
+      // Les essais clos, tels que le tableau les montre (billet #13).
+      essais: [...((memo && memo.essais) || [])],
       rendement: rendementVu(engin),
       // La ligne de Braise pour cette image, et vide les fois d'après : la projection
       // garde la dernière qu'elle a reçue, une phrase reste posée au lieu de
@@ -2370,6 +2479,7 @@ const reglesDuJeu = (() => {
     mondeSousLesRoues, prochaineRampe,
     soutage, DEBIT_DE_SOUTAGE, UNITES_DE_RESERVOIR,
     basculerLaMarche, marcheArriereEstMontee, basculerLeCircuit,
+    ventDit, ouvrirEssai, cloreEssai,
   };
   return reglesDuJeu;
 })();
@@ -2417,6 +2527,13 @@ const reglesDuJeu = (() => {
     garage: document.getElementById('garage-ouvrir'),
     etabli: document.getElementById('etabli'),
     recommencer: document.getElementById('recommencer'),
+    ventDit: document.getElementById('vent-dit'),
+    compteMusette: document.getElementById('compte-musette'),
+    musetteDite: document.getElementById('musette-dite'),
+    comptePropergol: document.getElementById('compte-propergol'),
+    propergolDit: document.getElementById('propergol-dit'),
+    essaisOuvrir: document.getElementById('essais-ouvrir'),
+    tableEssais: document.getElementById('table-des-essais'),
   };
 
   // --- Le départ : la machine des treize pièces, chauffée, au bord de la ligne ---
@@ -2471,6 +2588,9 @@ const reglesDuJeu = (() => {
     R.passerLImage(engin, mondeSousLaRoue(), { duree: 40 });
     engin.pousser();
   }
+  // Le premier essai s'ouvre au lever de rideau (billet #13) : ce qui se joue
+  // avant le premier geste d'établi est une séance comme les autres.
+  R.ouvrirEssai(engin, memo);
   ecrireLaPartie();
 
   // --- L'horloge ---
@@ -2679,6 +2799,26 @@ const reglesDuJeu = (() => {
       x: ancreX() + (x - sol.distance) * ECHELLE,
       y: solY() - denivelle(sol, sol.distance, x) * ECHELLE,
     };
+  }
+
+  // Le vent se voit (billet #13) : hors de la vallée, rien ; dedans, des traînées
+  // pâles qui filent vers l'arrière, d'autant plus denses et longues que le vent
+  // est fort. Ce n'est pas une jauge de plus : c'est l'air qui passe, et l'enfant
+  // le voit avant de lire le mot.
+  function dessineLeVent(etat) {
+    const force = etat.vent.force;
+    if (!(force > 0)) return;
+    for (let k = 0; k < 5; k += 1) {
+      const phase = (etat.comptes.secondes * (0.5 + force) + k * 0.37) % 1;
+      const x = large * (1.05 - phase * 1.1);
+      const y = haut * (0.16 + 0.13 * k);
+      crayon.strokeStyle = `rgba(223, 231, 238, ${0.08 + 0.14 * Math.min(1, force)})`;
+      crayon.lineWidth = 2;
+      crayon.beginPath();
+      crayon.moveTo(x, y);
+      crayon.lineTo(x + 30 + 50 * Math.min(1, force), y);
+      crayon.stroke();
+    }
   }
 
   function dessineLeDecor(etat) {
@@ -3447,13 +3587,26 @@ const reglesDuJeu = (() => {
     vues.garage.setAttribute('aria-expanded', String(!vues.etabli.hidden));
   }
 
+  // Le tiroir des essais (billet #13) : même geste que le garage, un tableau au
+  // lieu d'une liste.
+  function ouvrirLesEssais() {
+    const ouvert = vues.essaisOuvrir.getAttribute('aria-expanded') === 'true';
+    vues.essaisOuvrir.setAttribute('aria-expanded', String(!ouvert));
+    vues.tableEssais.hidden = ouvert;
+  }
+
   function gesteDeLetabli(evenement) {
     const bouton = evenement.target.closest('button[data-piece]');
     if (!bouton || bouton.disabled) return;
+    // Un geste d'établi clot l'essai qui se jouait et en ouvre un neuf (billet
+    // #13) : le tableau compare des séances, pas des intentions. L'essai clos
+    // garde le montage tel qu'il était AVANT le geste.
+    R.cloreEssai(engin, memo);
     // Un clic, un exemplaire. Les règles refusent ce qui dépasse la limite ou ce
     // qui n'est pas ouvert : l'écran n'a rien à ajouter au refus.
     if (bouton.dataset.geste === 'brancher') R.brancherPiece(engin, memo, bouton.dataset.piece);
     else R.demonterPiece(engin, memo, bouton.dataset.piece);
+    R.ouvrirEssai(engin, memo);
   }
 
   function metsALjour(etat) {
@@ -3486,12 +3639,52 @@ const reglesDuJeu = (() => {
     // Le mot du soutage vient des règles, entier : la projection ne devine pas si
     // l'on est à un charbonnage, elle écrit ce que l'état en dit.
     ecrire(vues.soutageDit, etat.soutage.mot || '—');
+    // Le vent au droit des roues, en un mot (billet #13) : l'état le rend, la
+    // projection l'écrit. Hors de la vallée, « calme » — et l'éolienne ne rend rien.
+    ecrire(vues.ventDit, etat.vent.mot);
+    // Les comptes propres des rivales : chacun ne se montre qu'avec sa pièce.
+    const aCheval = etat.pieces.cheval > 0;
+    vues.compteMusette.hidden = !aCheval;
+    if (aCheval) ecrire(vues.musetteDite, `${Math.max(0, Math.round(etat.comptes.avoine))} kg`);
+    const aFusee = etat.pieces.fusee > 0;
+    vues.comptePropergol.hidden = !aFusee;
+    if (aFusee) ecrire(vues.propergolDit, `${Math.max(0, Math.round(etat.comptes.propergol))} kg`);
     // Braise : la règle dit si elle ouvre la bouche, la projection ne fait que
     // recopier. Le bouton ne la fait pas taire sa mémoire, seulement la ligne.
     if (etat.braise.mot) phraseDeBraise = etat.braise.mot;
     ecrire(vues.braise, etat.braise.muet ? '' : phraseDeBraise);
     ecrire(vues.rendementDit, motsDeRendement(etat.rendement));
     dessineLetabli(etat);
+    dessineLesEssais(etat);
+  }
+
+  // Le tableau des essais (billet #13) : reconstruit quand un essai se clôt, pas
+  // à chaque image. Le plus sobre porte le mot « gagne » — écrit, pas coloré. */
+  let nombreEssaisRendus = -1;
+  function dessineLesEssais(etat) {
+    if (etat.essais.length === nombreEssaisRendus) return;
+    nombreEssaisRendus = etat.essais.length;
+    const corps = vues.tableEssais.tBodies[0];
+    corps.textContent = '';
+    let meilleur = null;
+    for (const e of etat.essais) {
+      if (e.mParKg !== null && (meilleur === null || e.mParKg > meilleur.mParKg)) meilleur = e;
+    }
+    for (const e of etat.essais) {
+      const tr = document.createElement('tr');
+      const cellules = [
+        e === meilleur && etat.essais.length > 1 ? `${e.tire} — gagne` : e.tire,
+        motsDeDistance(e.chemin),
+        `${e.mange.toFixed(1).replace('.', ',')} kg`,
+        e.mParKg === null ? '—' : `${e.mParKg.toFixed(1).replace('.', ',')} m par kg`,
+      ];
+      for (const texte of cellules) {
+        const td = document.createElement('td');
+        td.textContent = texte;
+        tr.append(td);
+      }
+      corps.append(tr);
+    }
   }
 
   // --- Les gestes ---
@@ -3570,6 +3763,7 @@ const reglesDuJeu = (() => {
   vues.circuit.addEventListener('click', embrayerLeCircuit);
   vues.marcheArriere.addEventListener('click', basculerLaMarcheArriere);
   vues.garage.addEventListener('click', ouvrirLeGarage);
+  vues.essaisOuvrir.addEventListener('click', ouvrirLesEssais);
   vues.braiseBouton.addEventListener('click', couperLaParole);
   vues.recommencer.addEventListener('click', recommencer);
   vues.etabli.addEventListener('click', gesteDeLetabli);
@@ -3627,6 +3821,7 @@ const reglesDuJeu = (() => {
     crayon.clearRect(0, 0, large, haut);
     dessineLeSol(etat);
     dessineLeDecor(etat);
+    dessineLeVent(etat);
     dessineLengin(etat);
     avaleLaFumee(etat, enPause ? 0 : ecoule);
     dessineLaJauge(etat);

@@ -88,6 +88,26 @@ Une soute démontée ne pèse ni sa tôle ni son contenu, dans cet ordre et pour
 Ce que la masse change, et que l'élève peut mesurer : plus la machine est lourde, plus son inertie la retient au démarrage, plus l'adhérence des roues lui donne de prise, et plus la rampe lui coûte de mètres — à feu et régulateur égaux, la remorque (800 kg de lest pur) lui vole des mètres dans la côte.
 _Avoid_ : poids (au sens physique du terme), élan (l'élan est la masse en mouvement, pas ce que l'on monte), taille
 
+**Vent**:
+Ce que l'air pousse sur l'engin, au droit des roues seulement : hors de la vallée ventée, il est calme et l'éolienne comme la voile ne rendent rien. L'écran le dit en trois mots — calme, brise, vent de la vallée — et le montre en traînées pâles qui filent vers l'arrière.
+_Avoid_ : courant (le courant est celui de l'eau), force (la force se compte en newtons, le vent de l'écran est un mot)
+
+**Rivale**:
+Une façon d'avancer qui n'est pas la vapeur : le vent (éolienne, voile), l'eau qui tombe (roue à eau), l'avoine (cheval). Chacune ne rend que là où ce qu'elle mange se trouve, et chacune tient son propre compte. Le jeu les laisse essayer : sur le plat, le cheval et la fusée vont moins loin que la vapeur mais rendent plus de mètres par kilo mangé — le tableau des essais ne le cache pas.
+_Avoid_ : concurrente, alternative (ce ne sont pas des choix abstraits, ce sont des pièces)
+
+**Musette**:
+Ce que le cheval porte à manger : l'avoine, en kilos. Elle ne se remplit pas en route — quand elle est vide, le cheval s'arrête de tirer, et c'est tout ce que le jeu en dit.
+_Avoid_ : réserve d'avoine, sac, fourrage
+
+**Propergol**:
+Ce que la fusée brûle pour pousser, en kilos. Il ne se remplit pas en route : la fusée pousse jusqu'au bout de son propergol, puis se tait. Elle pousse le châssis sans arbre ni roues — c'est sa liberté et c'est son prix.
+_Avoid_ : carburant (le carburant de la machine est le charbon), essence
+
+**Mètre par kilo**:
+Ce que compte le tableau des essais : le chemin fait par kilo de ce que le montage a mangé, charbon, avoine ou propergol confondus. Ce n'est pas le rendement du jeu — le rendement ne compte que le charbon brûlé, et c'est lui le score (ADR 0004) ; le mètre par kilo compare des appétits, pas des scores.
+_Avoid_ : rendement (réservé au score du jeu), efficacité, consommation
+
 ### La machine à vapeur
 
 **Machine à vapeur**:
