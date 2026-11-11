@@ -2954,3 +2954,47 @@ test('la projection ne connaît qu\'une seule clé de navigateur pour la partie'
   assert.doesNotMatch(sourceRegles(), /localStorage|document\.|window\./,
     'les règles touchent au stockage ou au navigateur : elles n\'ont ni clé ni fenêtre');
 });
+
+// --- Billet #15 : la tôle travaille -------------------------------------------
+
+test('avec soupape, la tôle ne travaille jamais, même à feu d’enfer', () => {
+  // La soupape est la limite : au-dessus, elle siffle et plafonne la pression.
+  // Sans elle la tôle travaille ; avec elle, la machine ne peut pas l'atteindre.
+  const engin = machineVapeur({ regulateur: 0 });
+  rouler(engin, plaine(), { duree: 120 });
+  assert.equal(engin.chaudiere.danger, false, 'une soupape montée laisse la tôle travailler');
+  assert.equal(engin.chaudiere.soupapeSiffle, true, 'à feu d’enfer et sans soutirage, la soupape devrait siffler');
+});
+
+test('sans soupape la tôle travaille, et remonter la soupape l’arrête', () => {
+  const { engin, monde } = enginEnDanger();
+  assert.equal(engin.chaudiere.danger, true, 'sans soupape et à fond, la tôle ne travaille pas');
+  assert.ok(engin.chaudiere.pression > R.ZONE_SOUPAPE,
+    `le danger devrait être au-dessus de la limite (${engin.chaudiere.pression.toFixed(1)} > ${R.ZONE_SOUPAPE})`);
+  // Remonter la soupape cesse l'épisode : elle siffle et la pression retombe.
+  engin.brancher('soupape');
+  rouler(engin, monde, { duree: 10 });
+  assert.equal(engin.chaudiere.danger, false, 'soupape remontée, la tôle travaille encore');
+});
+
+test('la tôle qui travaille paie en charbon, et le feu pousse toujours', () => {
+  // Pas de défaite, pas de pièce perdue : la leçon se paie en charbon, et c'est
+  // tout. Le feu continue de pousser pendant que la scène dure.
+  const { engin } = enginEnDanger();
+  assert.equal(engin.chaudiere.danger, true, 'pas encore en danger');
+  const bruleAvant = engin.charbonBrule;
+  rouler(engin, plaine(), { duree: 20 });
+  assert.equal(engin.chaudiere.danger, true, 'le danger ne dure pas tant que la pression reste haute');
+  assert.ok(engin.charbonBrule > bruleAvant, 'le danger ne brûle pas de charbon');
+  assert.ok(engin.commandes.feu > 0, 'le feu s’est éteint pendant que la tôle travaillait');
+});
+
+test('la scène de la tôle ne se paie ni en défaite, ni en pièce, ni en sauvegarde', () => {
+  const source = sourceProjection();
+  assert.doesNotMatch(source, /défaite|game over|perd la partie|texte.*effac|efface.*sauvegarde|sauvegarde.*effac/,
+    'un écran de défaite ou une perte de pièce/sauvegarde traîne dans la projection');
+  // La scène ne vient qu'à l'entrée de l'épisode : la projection garde l'état
+  // précédent pour distinguer « ça commence » de « ça continue ».
+  assert.match(source, /dangerEtait/, 'la projection ne suit pas le début d’un épisode de danger');
+  assert.match(source, /eclateLaTole/, 'la scène de suie et de vapeur n’est pas dessinée');
+});

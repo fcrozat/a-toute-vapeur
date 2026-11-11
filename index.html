@@ -2537,10 +2537,37 @@ const reglesDuJeu = (() => {
       const vie = 1 - p.age / p.vie;
       crayon.fillStyle = p.vapeur
         ? `rgba(230, 240, 248, ${0.5 * vie})`
-        : `rgba(38, 38, 42, ${0.55 * p.dense * vie})`;
+        : p.suie
+          ? `rgba(26, 20, 14, ${0.8 * vie})`   // la suie, noire et dense, plus lourde
+          : `rgba(38, 38, 42, ${0.55 * p.dense * vie})`;
       crayon.beginPath();
       crayon.arc(p.x, p.y, p.r, 0, 2 * Math.PI);
       crayon.fill();
+    }
+  }
+
+  // --- La tôle qui travaille : la scène (billet #15) ------------------------
+  // Une rafale de suie et de vapeur à l'entrée de l'épisode, une seule fois —
+  // pas à chaque image. Le feu continue de pousser pendant qu'elle dure : c'est
+  // le modèle qui la nourrit, l'écran ne répare rien et ne propose rien. La
+  // transition faux → vrai est le seul déclencheur ; tant que la tôle travaille,
+  // `gondoleLaTole` la dessine déjà bombée.
+  let dangerEtait = false;
+  function eclateLaTole(etat) {
+    const source = pointDeEngin(D.chaudiere.x1 - 0.2, D.chaudiere.y + D.chaudiere.rayon, etat);
+    for (let i = 0; i < 26; i += 1) {
+      fumee.push({
+        x: source.x, y: source.y, r: 2 + Math.random() * 3,
+        vx: -30 - Math.random() * 40, vy: -70 - Math.random() * 60,
+        age: 0, vie: 1.4 + Math.random() * 1.2, dense: 0.8, suie: true,
+      });
+    }
+    for (let i = 0; i < 10; i += 1) {
+      fumee.push({
+        x: source.x, y: source.y, r: 4 + Math.random() * 3,
+        vx: -20 - Math.random() * 30, vy: -50 - Math.random() * 30,
+        age: 0, vie: 0.8 + Math.random() * 0.6, dense: 0.4, vapeur: true,
+      });
     }
   }
 
@@ -3525,6 +3552,9 @@ const reglesDuJeu = (() => {
     if (typeof etat.rendement.valeur === 'number' && (memo.meilleurRendement === null || etat.rendement.valeur > memo.meilleurRendement)) {
       memo.meilleurRendement = etat.rendement.valeur;
     }
+    // La scène de la tôle ne vient qu'à l'entrée de l'épisode, pas chaque image.
+    if (etat.chaudiere.danger && !dangerEtait) eclateLaTole(etat);
+    dangerEtait = etat.chaudiere.danger;
     ecrireLaPartie();
     crayon.clearRect(0, 0, large, haut);
     dessineLeSol(etat);
