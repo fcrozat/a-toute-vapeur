@@ -166,35 +166,23 @@ relancer. À juger au regard — c'est une punition automatique qui ressemble à
 une leçon. La promesse du bercement est jouée à feu d'enfer exprès : c'est là que la parole
 bascule le plus.
 
-## 8. À l'écran, avec le seul doigt d'un enfant
+## 8. À l'écran, aujourd'hui
 
 Tout ce feuillet est écrit à la couture des règles. Le billet demandait aussi l'image : elle
-a été jouée dans la page, Playwright en tête-à-tête, Playwright et son chromium restés au
-cache de travail — le dépôt ne reçoit que des PNG. La page pilotée est la copie de travail
-du cache, c'est-à-dire `index.html` plus UNE fonction de lecture seule qui rend ce que le
-garage compte, l'écran seul ne l'affichant pas. Le geste n'a rien de plus que les trois
-commandes de l'enfant :
+est jouée dans la page du dépôt elle-même, Playwright en tête-à-tête, Playwright et son
+chromium restés au cache de travail — le dépôt ne reçoit que des PNG. Les trois images
+ci-dessous montrent le jeu tel qu'il est maintenant, après les billets #11, #12, #14, #19
+et #20 : les unités justes à la soute et à la citerne, la masse qui suit ce qu'on embarque,
+le levier de changement de marche sur l'établi. Les captures de l'époque du billet, qui
+montraient une soute en litres et une masse sourde aux réservoirs, ont été retirées du
+dépôt : une image qui ment sur le jeu ment deux fois.
 
-1. chauffer robinet fermé, à feu 0,2 ;
-2. reprendre robinet grand ouvert, la barre secouée toutes les 0,4 s de machine ;
-3. fermer le robinet à fond pour qu'elle s'assoie ;
-4. la rouvrir d'un cheveu — `estPrise` veut la vapeur demandée — et plus rien toucher
-   pendant trois secondes de machine ;
-5. recommencer. Et si elle ne repart pas, laisser le robinet fermé six secondes : c'est la
-   vapeur neuve que le robinet admet qui la plaque contre son point mort, fermée elle se
-   vide par l'échappement et la barre reprend prise.
+|moment|à l'écran|
+|---|---|
+|le lever de rideau|la machine roule, Braise nomme ce qui se passe — capture-ecran-roule.png|
+|la barre à son régime|elle échappe aux mains, et Braise le dit — capture-ecran-parole.png|
+|le garage ouvert|l'établi compte les pièces de l'engin d'ouverture, changement de marche compris — capture-ecran-garage.png|
 
-|moment|secondes de machine|à l'écran|
-|---|---|---|
-|deux chutes tenues|56 s|« Calée », 0,0 km/h, 6,1 bars — capture-10-avant.png|
-|la troisième s'achève|61 s|Braise dit la phrase d'ouverture — capture-10-ouverture.png|
-|le garage ouvert|61 s|le « Second cylindre » est sur l'établi — capture-10-etabli.png|
-|la pièce branchée|62 s|masse 3,2 t → 3,6 t — capture-10-montee.png|
-
-La phrase, telle que la page l'a rendue : « Trois fois prise à son point mort : le garage a
-ouvert un second cylindre, lancé à quatre-vingt-dix degrés du premier. » La pièce arrive
-montée d'office sur la machine — c'est une structurelle : le bouton qui reste sur l'établi
-est « Brancher », et la masse passe de 3,2 t à 3,6 t.
 Ce que la section 7 mesurait reste vrai, et l'écran le dit mieux que la couture : à ne pas
 refermer le robinet, une seule chute tenue suffit à la verrouiller et plus rien ne la fait
 repartir. Ce n'est pas le seuil qui est dur, c'est la vapeur comprimée.
