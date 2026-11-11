@@ -2868,3 +2868,89 @@ test('la projection montre et cache le levier selon la pièce', () => {
   assert.match(source, /marche-arriere/,
     'le bouton de marche arrière n\'existe pas dans la projection');
 });
+
+// --- Billet #14 : la partie qui se reprend, machine froide --------------------
+
+test('la partie se sauvegarde avec sa version, et charger rend une machine froide qui se souvient', () => {
+  // Ce qui reprend — pièces, réservoirs, distance, déblocages, compteurs, meilleur —
+  // et ce qui ne reprend pas : un coffre ne garde ni la pression ni la vitesse ni
+  // l'angle de manivelle ni la vapeur scellée. Reprise, la machine est froide.
+  const monde = plaine();
+  const engin = machineVapeur();
+  rouler(engin, monde, { duree: 20 });
+  engin.distance = 42.5;
+  engin.soute = 200;
+  engin.citerne = 100;
+  engin.propergol = 7;
+  engin.avoine = 3;
+  const memo = R.nouvelleMemo();
+  memo.deblocages.push('pompe');
+  memo.garage.suivis.calage = { compte: 2, branche: 'avant', depuis: 0, ouvert: false };
+
+  const donnees = R.sauvegarde(engin, memo, 12.3);
+  assert.equal(donnees.version, R.VERSION_DE_SAUVEGARDE, 'la sauvegarde ne porte pas son numéro de version');
+  assert.equal(donnees.meilleur, 12.3, 'le meilleur rendement ne se sauvegarde pas');
+
+  const reprise = R.charger(donnees);
+  assert.ok(reprise, 'charger refuse sa propre sauvegarde');
+  const { engin: froid, memo: memoire } = reprise;
+
+  // Ce qui reprend.
+  assert.deepEqual(froid.pieces, engin.pieces, 'les pièces ne reprennent pas');
+  assert.equal(froid.soute, 200, 'la soute ne reprend pas');
+  assert.equal(froid.citerne, 100, 'la citerne ne reprend pas');
+  assert.equal(froid.distance, 42.5, 'la distance ne reprend pas');
+  assert.equal(froid.propergol, 7, 'le propergol ne reprend pas');
+  assert.equal(froid.avoine, 3, "l'avoine ne reprend pas");
+  assert.ok(memoire.deblocages.includes('pompe'), 'les déblocages ne reprennent pas');
+  assert.equal(memoire.garage.suivis.calage.compte, 2, 'les compteurs du garage ne reprennent pas');
+
+  // Ce qui ne reprend pas : la machine froide.
+  const vierge = M.nouvelEngin([]);
+  assert.equal(froid.chaudiere.pression, vierge.chaudiere.pression, 'la pression a survécu au coffre');
+  assert.equal(froid.machine.vitesseAngulaire, 0, 'la vitesse a survécu au coffre');
+  assert.equal(froid.machine.angle, 0, "l'angle de manivelle a survécu au coffre");
+  assert.equal(froid.machine.cale, true, 'la machine rechargée n\'est pas tenue à son point mort');
+  assert.equal(froid.machine.marche, 'avant', 'la marche a survécu au coffre');
+  assert.equal(froid.chaudiere.pression, vierge.chaudiere.pression, 'la vapeur scellée a survécu au coffre');
+});
+
+test('charger refuse une version inconnue, une pièce inventée, une grandeur abîmée', () => {
+  const engin = machineVapeur();
+  const donnees = R.sauvegarde(engin, R.nouvelleMemo(), null);
+
+  assert.equal(R.charger(null), null, 'une sauvegarde nulle ouvre une partie');
+  assert.equal(R.charger({}), null, 'un objet vide ouvre une partie');
+  assert.equal(R.charger({ ...donnees, version: 999 }), null, 'une version inconnue ouvre une partie');
+
+  const pieceInventee = JSON.parse(JSON.stringify(donnees));
+  pieceInventee.engin.pieces.moteur_magique = 3;
+  assert.equal(R.charger(pieceInventee), null, 'une pièce inventée ouvre une partie au lieu d\'une neuve');
+
+  const compteMenteur = JSON.parse(JSON.stringify(donnees));
+  compteMenteur.engin.pieces.soupape = -1;
+  assert.equal(R.charger(compteMenteur), null, 'un compte négatif ouvre une partie au lieu d\'une neuve');
+
+  const souteTrouee = JSON.parse(JSON.stringify(donnees));
+  souteTrouee.engin.soute = -5;
+  assert.equal(R.charger(souteTrouee), null, 'une soute négative ouvre une partie au lieu d\'une neuve');
+});
+
+test('la projection ne connaît qu\'une seule clé de navigateur pour la partie', () => {
+  // Les règles ne touchent pas au stockage : `sauvegarde` et `charger` sont des
+  // fonctions pures, et c'est la projection qui lit et écrit la clé du navigateur.
+  // Une seule clé, déclarée une fois, et tous les appels au coffre y passent.
+  const source = sourceProjection();
+  const declarations = [...source.matchAll(/const\s+CLE_DE_SAUVEGARDE\s*=\s*['"`]([^'"`]+)/g)];
+  assert.equal(declarations.length, 1, 'la clé de sauvegarde n\'est pas déclarée une seule fois');
+  const cle = declarations[0][1];
+
+  const appels = [...source.matchAll(/localStorage\.(?:get|set|remove)Item\(([^)]+)\)/g)];
+  assert.ok(appels.length > 0, 'la projection ne lit ni n\'écrit la partie nulle part');
+  for (const [, arg] of appels) {
+    assert.ok(arg.includes('CLE_DE_SAUVEGARDE') || arg.trim() === `'${cle}'`,
+      `un appel au stockage n'emploie pas la clé unique : ${arg.trim()}`);
+  }
+  assert.doesNotMatch(sourceRegles(), /localStorage|document\.|window\./,
+    'les règles touchent au stockage ou au navigateur : elles n\'ont ni clé ni fenêtre');
+});

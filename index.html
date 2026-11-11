@@ -98,6 +98,7 @@
       <!-- Le levier de changement de marche (billet n°11). Il ne se montre qu'avec
            la pièce : sans elle, la machine part dans le sens qu'on lui donne. -->
       <button id="marche-arriere" type="button" aria-pressed="false" hidden>Marche arrière</button>
+      <button id="recommencer" type="button">Recommencer</button>
       <p id="vitesse-temps"><span class="etiquette">Vitesse de temps</span>
         <button class="palier" type="button" data-vitesse="1" aria-pressed="true">×1</button>
         <button class="palier" type="button" data-vitesse="2" aria-pressed="false">×2</button>
@@ -1898,6 +1899,83 @@ const reglesDuJeu = (() => {
     };
   }
 
+  // --- La partie qui se reprend, machine froide (billet #14) -----------------
+  //
+  // Ce qui se sauvegarde est ce dont le lendemain a le droit de se souvenir : les
+  // pièces et leurs comptes, les réservoirs, la distance, les déblocages et les
+  // compteurs du garage, le meilleur rendement, et la graine du monde. Ce qui ne
+  // se sauvegarde pas — la pression, la vitesse, l'angle de manivelle, la vapeur
+  // scellée — c'est ce qu'aucun coffre ne peut garder : une chaudière montée en
+  // pression ne se range pas. Reprise, la machine est froide.
+  //
+  // La graine ne fait pas partie des arguments : elle est connue de la projection,
+  // seule à lire l'adresse et à écrire la clé du navigateur. `sauvegarde` rend
+  // tout le reste ; la projection ajoute `graine` avant de l'écrire, et `charger`
+  // la relit sans la juger — une partie reprise garde sa ligne, c'est le contrat
+  // « deux montages sur la même graine » (ADR, billets #11).
+  const VERSION_DE_SAUVEGARDE = 1;
+
+  function sauvegarde(engin, memo, meilleur) {
+    return {
+      version: VERSION_DE_SAUVEGARDE,
+      engin: {
+        pieces: { ...engin.pieces },
+        soute: engin.soute,
+        citerne: engin.citerne,
+        distance: engin.distance,
+        charbonBrule: engin.charbonBrule,
+        eauPompee: engin.eauPompee,
+        propergol: engin.propergol,
+        avoine: engin.avoine,
+        travailUtile: engin.travailUtile,
+      },
+      memo: {
+        deblocages: [...(memo && memo.deblocages) || []],
+        garage: {
+          suivis: { ...((memo && memo.garage && memo.garage.suivis) || {}) },
+          aDire: (memo && memo.garage && memo.garage.aDire) || null,
+        },
+      },
+      meilleur,
+    };
+  }
+
+  // Reconstruit une machine froide depuis une sauvegarde, ou `null` si la version
+  // est inconnue ou l'objet inventé. La machine sort de `nouvelEngin` sans pièce :
+  // pression ambiante, tenue à son point mort, manivelle à zéro, vapeur scellée
+  // ambiante — c'est le froid promis, pas une prise de pression gardée en cachette.
+  // On remonte ensuite les comptes de la partie, jamais le geste physique.
+  function charger(donnees) {
+    if (!donnees || donnees.version !== VERSION_DE_SAUVEGARDE) return null;
+    const engin = modeleVapeur.nouvelEngin([]);
+    const pieces = donnees.engin && donnees.engin.pieces;
+    if (!pieces || typeof pieces !== 'object') return null;
+    for (const [id, nombre] of Object.entries(pieces)) {
+      if (!modeleVapeur.CATALOGUE[id]) return null;   // une pièce inventée corrompt tout
+      if (!Number.isInteger(nombre) || nombre < 0) return null;
+      for (let i = 0; i < nombre; i += 1) engin.brancher(id);
+    }
+    const e = donnees.engin;
+    // Une grandeur négative est une sauvegarde abîmée, pas un état à raccommoder :
+    // la partie neuve s'ouvre sans message, comme pour une version inconnue.
+    for (const cle of ['soute', 'citerne', 'distance', 'charbonBrule', 'eauPompee', 'propergol', 'avoine', 'travailUtile']) {
+      if (e[cle] !== undefined && !(Number.isFinite(e[cle]) && e[cle] >= 0)) return null;
+    }
+    engin.soute = e.soute ?? 0;
+    engin.citerne = e.citerne ?? 0;
+    engin.distance = e.distance ?? 0;
+    engin.charbonBrule = e.charbonBrule ?? 0;
+    engin.eauPompee = e.eauPompee ?? 0;
+    engin.propergol = e.propergol ?? 0;
+    engin.avoine = e.avoine ?? 0;
+    engin.travailUtile = e.travailUtile ?? 0;
+    const memo = nouvelleMemo();
+    memo.deblocages = Array.isArray(donnees.memo && donnees.memo.deblocages) ? [...donnees.memo.deblocages] : [];
+    memo.garage = { suivis: { ...((donnees.memo && donnees.memo.garage && donnees.memo.garage.suivis) || {}) }, aDire: (donnees.memo && donnees.memo.garage && donnees.memo.garage.aDire) || null };
+    memo.meilleurRendement = donnees.meilleur;
+    return { engin, memo };
+  }
+
 
   // --- Braise : ce qui vient de se passer, dit une fois ---------------------
   //
@@ -2247,6 +2325,7 @@ const reglesDuJeu = (() => {
     piecesDeLetabli, limiteDePiece, brancherPiece, demonterPiece,
     VITESSES_DU_TEMPS, pasDeLImage, passerLImage,
     nouvelleMemo, MOT_DU_RENDEMENT, MOT_DU_RETOUR, RENDEMENT_EN_ATTENTE,
+    VERSION_DE_SAUVEGARDE, sauvegarde, charger,
     PAROLES, parole, situationVue, basculerParole, coupDeBarre, imagesDe,
     pieceNouvelleAterre, PIECES_NOMMEES, PAS_D_ECRAN,
     TENUE_DU_MOT, ENTRE_DEUX, REFROIDISSEMENT, FENETRE_DE_TATONNEMENT,
@@ -2302,26 +2381,50 @@ const reglesDuJeu = (() => {
     masseDite: document.getElementById('masse-dite'),
     garage: document.getElementById('garage-ouvrir'),
     etabli: document.getElementById('etabli'),
+    recommencer: document.getElementById('recommencer'),
   };
 
   // --- Le départ : la machine des treize pièces, chauffée, au bord de la ligne ---
   // La ligne vient d'une graine, pas d'un hasard : la même graine rend toujours le
   // même chemin, et l'adresse peut la choisir (?graine=1882). Le relief dessiné,
   // la pente sous les roues et la rampe annoncée sortent tous de là.
-  const graine = R.nombreDeLaGraine(new URLSearchParams(window.location.search).get('graine'));
+  // La partie qui se reprend (billet #14) : tout se lit et s'écrit dans une seule
+  // clé du navigateur, ici et nulle part ailleurs. Les règles ne connaissent ni clé
+  // ni fenêtre — `sauvegarde` et `charger` sont des fonctions pures — c'est la
+  // projection qui range la partie au coffre.
+  const CLE_DE_SAUVEGARDE = 'a-toute-vapeur.partie';
+  const lireLaPartie = () => {
+    try { return JSON.parse(localStorage.getItem(CLE_DE_SAUVEGARDE)); }
+    catch { return null; }   // une sauvegarde abîmée est une partie neuve
+  };
+  const ecrireLaPartie = () => {
+    try {
+      const donnees = R.sauvegarde(engin, memo, memo.meilleurRendement);
+      donnees.graine = graine;
+      localStorage.setItem(CLE_DE_SAUVEGARDE, JSON.stringify(donnees));
+    } catch { /* le coffre fermé ne bloque pas la partie */ }
+  };
+
+  const graineDepuisAdresse = R.nombreDeLaGraine(new URLSearchParams(window.location.search).get('graine'));
+  const sauvegardee = lireLaPartie();
+  const reprise = R.charger(sauvegardee);
+  const graine = reprise && sauvegardee && sauvegardee.graine !== undefined
+    ? R.nombreDeLaGraine(sauvegardee.graine)
+    : graineDepuisAdresse;
   const monde = R.mondeDeLaGraine(graine);
-  const engin = M.nouvelEngin(R.PIECES_DE_BASE);
+  let engin = reprise ? reprise.engin : M.nouvelEngin(R.PIECES_DE_BASE);
   let feuDemande = 0.8;
   engin.commandes.feu = feuDemande;
   engin.commandes.regulateur = R.commandeDuCurseur(100);   // la vapeur est grande ouverte
 
-  // La mémoire du jeu, telle que les règles l'ouvrent : vide. Aucun refroidissement
-  // de Braise, aucun débloquage du garage, aucun record. Le ticket qui les écrit y
-  // trouvera une place faite ; aujourd'hui rien ne la consulte.
-  const memo = R.nouvelleMemo();
+  // La mémoire du jeu, telle que les règles l'ouvrent : vide, ou reprise du coffre.
+  // Aucun refroidissement de Braise, aucun débloquage du garage, aucun record —
+  // sauf ce que la partie d'hier a refermé dessus (billet #14).
+  let memo = reprise ? reprise.memo : R.nouvelleMemo();
 
   // On ouvre le rideau sur une chaudière chaude : sans ça, il faudrait une
-  // minute de feu avant que l'écran montre quoi que ce soit.
+  // minute de feu avant que l'écran montre quoi que ce soit. Une machine reprise,
+  // elle, reste froide — c'est le contrat du billet, pas un décor arrangé.
   // Le monde que sent la physique est celui sous les roues, pas la ligne entière :
   // donnée telle quelle, `monde.riviere` est vraie à cent mètres de l'eau — une
   // pompe montée soutirerait en rase campagne — et `monde.vent` est un objet, que
@@ -2329,8 +2432,11 @@ const reglesDuJeu = (() => {
   // besoin de voir la rivière avant d'y être.
   const mondeSousLaRoue = () => R.mondeSousLesRoues(engin, monde);
 
-  R.passerLImage(engin, mondeSousLaRoue(), { duree: 40 });
-  engin.pousser();
+  if (!reprise) {
+    R.passerLImage(engin, mondeSousLaRoue(), { duree: 40 });
+    engin.pousser();
+  }
+  ecrireLaPartie();
 
   // --- L'horloge ---
   // Le pas de temps appartient au modèle (`simuler` connaît le sien). L'image, la
@@ -3348,6 +3454,20 @@ const reglesDuJeu = (() => {
     enPause = !enPause;
     vues.pause.hidden = !enPause;
   }
+  // Recommencer (billet #14) : le meilleur rendement reste au coffre, tout le
+  // reste s'ouvre neuf — pièces, réservoirs, distance, et les déblocages compris.
+  function recommencer() {
+    const meilleur = memo.meilleurRendement;
+    engin = M.nouvelEngin(R.PIECES_DE_BASE);
+    engin.commandes.feu = feuDemande;
+    engin.commandes.regulateur = R.commandeDuCurseur(100);
+    memo = R.nouvelleMemo();
+    memo.meilleurRendement = meilleur;
+    phraseDeBraise = '';
+    R.passerLImage(engin, mondeSousLaRoue(), { duree: 40 });
+    engin.pousser();
+    ecrireLaPartie();
+  }
 
   vues.feu.addEventListener('input', () => reglerLeFeu(Number(vues.feu.value)));
   vues.regulateur.addEventListener('input', () => reglerLeRegulateur(Number(vues.regulateur.value)));
@@ -3356,6 +3476,7 @@ const reglesDuJeu = (() => {
   vues.marcheArriere.addEventListener('click', basculerLaMarcheArriere);
   vues.garage.addEventListener('click', ouvrirLeGarage);
   vues.braiseBouton.addEventListener('click', couperLaParole);
+  vues.recommencer.addEventListener('click', recommencer);
   vues.etabli.addEventListener('click', gesteDeLetabli);
   for (const bouton of vues.paliers) {
     bouton.addEventListener('click', () => choisirLaVitesseDeTemps(bouton.dataset.vitesse));
@@ -3397,6 +3518,14 @@ const reglesDuJeu = (() => {
       R.soutage(engin, sousLaRoue, pas * ecoule);
     }
     const etat = R.etatDuJeu(engin, monde, memo);
+    // Le meilleur rendement est un record de partie : il se relève aussitôt qu'un
+    // trajet fait mieux, et il suit la partie au coffre (billet #14), même après
+    // « Recommencer ». Il ne se lit pas tant qu'aucun charbon n'a brûlé : `null`
+    // n'est pas zéro.
+    if (typeof etat.rendement.valeur === 'number' && (memo.meilleurRendement === null || etat.rendement.valeur > memo.meilleurRendement)) {
+      memo.meilleurRendement = etat.rendement.valeur;
+    }
+    ecrireLaPartie();
     crayon.clearRect(0, 0, large, haut);
     dessineLeSol(etat);
     dessineLeDecor(etat);
