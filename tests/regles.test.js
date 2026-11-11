@@ -2998,3 +2998,97 @@ test('la scène de la tôle ne se paie ni en défaite, ni en pièce, ni en sauve
   assert.match(source, /dangerEtait/, 'la projection ne suit pas le début d’un épisode de danger');
   assert.match(source, /eclateLaTole/, 'la scène de suie et de vapeur n’est pas dessinée');
 });
+
+// --- Billet #12 : la pompe, la roue à eau, et la même eau ---------------------
+
+test('à la rivière, la pompe remplit la citerne à l’arrêt', () => {
+  // La rivière a deux emplois et un seul coût : la pompe y puise l'eau qui monte
+  // dans la citerne, là où ailleurs elle renvoie au bassin. Feu baissé pour que la
+  // chaudière ne boive pas plus vite que la pompe ne rend — la phys­ique d'abord.
+  const engin = M.nouvelEngin([...MACHINE, 'pompe']);
+  engin.soute = 300;
+  engin.citerne = 10;
+  engin.commandes.feu = 1;
+  engin.commandes.regulateur = 1;
+  const riviere = M.nouveauMonde({ riviere: true });
+  rouler(engin, riviere, { duree: 40 });
+  engin.pousser();
+  rouler(engin, riviere, { duree: 40 });
+
+  engin.commandes.feu = 0.2;
+  engin.commandes.regulateur = 0.2;
+  engin.commandes.pompe = 1;
+  const avant = engin.citerne;
+  rouler(engin, riviere, { duree: 5 });
+  assert.ok(engin.citerne > avant,
+    `la pompe à la rivière n'a pas rempli la citerne (${avant.toFixed(1)} → ${engin.citerne.toFixed(1)} L)`);
+});
+
+test('brancher la pompe ou la roue à eau n’ôte ni charbon ni eau', () => {
+  // Monter une rivale ne coûte ni une pelletée ni une gorgée : c'est le bras qui
+  // la porte, et la masse qu'elle ajoute. Le billet le promet, la règle le tient.
+  const memo = R.nouvelleMemo();
+  memo.deblocages.push('pompe', 'roue_a_eau');
+  for (const id of ['pompe', 'roue_a_eau']) {
+    const engin = machineVapeur();
+    const souteAvant = engin.soute;
+    const citerneAvant = engin.citerne;
+    const bruleAvant = engin.charbonBrule;
+    assert.equal(R.brancherPiece(engin, memo, id), true, `l'établi refuse « ${id} » ouverte`);
+    assert.equal(engin.soute, souteAvant, `brancher « ${id} » a pris du charbon`);
+    assert.equal(engin.citerne, citerneAvant, `brancher « ${id} » a pris de l'eau`);
+    assert.equal(engin.charbonBrule, bruleAvant, `brancher « ${id} » a brûlé du charbon`);
+  }
+});
+
+test('en circuit fermé, la pompe rend l’eau au bassin, jamais à la citerne', () => {
+  // Le montage qui triche : la roue boit ce que la pompe remonte, la même eau. La
+  // promesse qui compte est qu'aucune eau neuve n'entre dans la citerne quand la
+  // pompe renvoie au bassin.
+  const engin = M.nouvelEngin([...MACHINE, 'pompe', 'roue_a_eau']);
+  engin.soute = 300;
+  engin.citerne = 50;
+  engin.commandes.feu = 1;
+  engin.commandes.regulateur = 1;
+  const bassin = M.nouveauMonde({ circuit: { hauteur: 4 } });
+  rouler(engin, bassin, { duree: 40 });
+  engin.pousser();
+  rouler(engin, bassin, { duree: 40 });
+
+  engin.commandes.circuit = 1;
+  engin.commandes.pompe = 1;
+  const citerneAvant = engin.citerne;
+  rouler(engin, bassin, { duree: 5 });
+  assert.equal(engin.citerne, citerneAvant,
+    'la pompe en circuit a créé de l’eau neuve dans la citerne');
+  assert.ok(engin.eauPompee > 0, 'la pompe en circuit n’a pas remonté d’eau au bassin');
+});
+
+test('Braise nomme le circuit fermé une fois, et ne propose aucune réparation', () => {
+  const monde = M.nouveauMonde({ circuit: { hauteur: 4 } });
+  const engraillee = () => {
+    const engin = M.nouvelEngin([...MACHINE, 'pompe', 'roue_a_eau']);
+    engin.soute = 300;
+    engin.citerne = 50;
+    engin.commandes.feu = 1;
+    engin.commandes.regulateur = 1;
+    rouler(engin, monde, { duree: 40 });
+    engin.pousser();
+    engin.commandes.circuit = 1;
+    engin.commandes.pompe = 1;
+    return engin;
+  };
+  const memo = R.nouvelleMemo();
+  const engin = engraillee();
+  const dites = [];
+  for (let t = 0; t < 10; t += 0.05) {
+    const etat = R.etatDuJeu(engin, monde, memo);
+    if (etat.braise.clef) dites.push(etat.braise.clef);
+  }
+  assert.ok(dites.includes('meme_eau'), `Braise n'a pas nommé le circuit (${[...new Set(dites)].join(', ')})`);
+  assert.equal(dites.filter((c) => c === 'meme_eau').length, 1,
+    'Braise a redit « la même eau » plus d’une fois');
+  // Aucune réparation proposée : la ligne nomme, elle n'ordonne pas.
+  assert.doesNotMatch(R.PAROLES.meme_eau, /appuie|branche|remonte|répare|démonte/,
+    'la ligne du circuit propose une réparation');
+});

@@ -30,7 +30,7 @@ endroit où écrire `deblocages.push`.
 
 ## 2. Ses phrases
 
-Elle ne dit **28 phrases** : les 28 ci-dessous, mot pour mot, et aucune autre. Cocher
+Elle ne dit **29 phrases** : les 29 ci-dessous, mot pour mot, et aucune autre. Cocher
 celles qu'on a entendues à l'écran en jouant la section 3. Aucune n'est une leçon, aucune ne
 propose une réparation, aucune ne dit « appuie sur ».
 
@@ -64,6 +64,7 @@ propose une réparation, aucune ne dit « appuie sur ».
 |ouvre_soute|Le foyer a mangé toute la soute : le garage en a ouvert une seconde.|☐|
 |ouvre_riviere|La rivière est passée sous les roues : le garage a ouvert la pompe, qui puise où elle trempe.|☐|
 |ouvre_vent|Le vent de la vallée a poussé plus fort que la machine : le garage a ouvert l’éolienne et la voile.|☐|
+|meme_eau|C’est la même eau : elle tourne dans le circuit, elle ne se crée pas et ne remplit rien.|☐|
 
 ## 3. Ce que la ligne du jeu rend, mesuré
 
@@ -77,27 +78,27 @@ partie : c'est le bercement — précisément ce que le compteur du garage ne li
 
 |main d'enfant|épisodes|distance|parole brute|ce qui s'ouvre (en secondes de machine)|
 |---|---|---|---|---|
-|laissée à elle-même|calage 0/3 · rampe 1/1 · citerne 1/1 · soute 0/1 · riviere 0/1 · vent 0/1|24,9 m|763 bascules|les trois gags → eolipyle + fusee + remorque @40,1 · rampe refusée → cheval @65,6 · citerne sèche → citerne @229,8|
-|qui tape la barre toutes les 2 s|calage 0/3 · rampe 1/1 · citerne 1/1 · soute 0/1 · riviere 0/1 · vent 0/1|24,9 m|933 bascules|les trois gags → eolipyle + fusee + remorque @40,1 · rampe refusée → cheval @65,8 · citerne sèche → citerne @229,1|
-|qui ferme et rouvre le robinet|calage 1/3 · rampe 0/1 · citerne 1/1 · soute 0/1 · riviere 0/1 · vent 0/1|16,1 m|131 bascules|les trois gags → eolipyle + fusee + remorque @40,1 · citerne sèche → citerne @263,1|
-|qui coupe le feu et le reprend|calage 0/3 · rampe 1/1 · citerne 0/1 · soute 0/1 · riviere 0/1 · vent 0/1|24,9 m|710 bascules|les trois gags → eolipyle + fusee + remorque @40,1 · rampe refusée → cheval @65,6|
-|feu à fond|calage 0/3 · rampe 1/1 · citerne 1/1 · soute 0/1 · riviere 1/1 · vent 1/1|100,8 m|658 bascules|les trois gags → eolipyle + fusee + remorque @40,1 · rivière atteinte → pompe @75,5 · vallée ventée → eolienne + voile @94,3 · rampe refusée → cheval @111,0 · citerne sèche → citerne @156,5|
-|feu à fond et barre|calage 0/3 · rampe 1/1 · citerne 1/1 · soute 0/1 · riviere 1/1 · vent 1/1|100,8 m|708 bascules|les trois gags → eolipyle + fusee + remorque @40,1 · rivière atteinte → pompe @75,4 · vallée ventée → eolienne + voile @94,2 · rampe refusée → cheval @111,4 · citerne sèche → citerne @156,0|
+|laissée à elle-même|calage 0/3 · rampe 1/1 · citerne 1/1 · soute 0/1 · riviere 0/1 · vent 0/1|24,9 m|604 bascules|les trois gags → eolipyle + fusee + remorque @40,1 · rampe refusée → cheval @65,2 · citerne sèche → citerne @230,1|
+|qui tape la barre toutes les 2 s|calage 0/3 · rampe 1/1 · citerne 1/1 · soute 0/1 · riviere 0/1 · vent 0/1|24,9 m|688 bascules|les trois gags → eolipyle + fusee + remorque @40,1 · rampe refusée → cheval @65,3 · citerne sèche → citerne @229,8|
+|qui ferme et rouvre le robinet|calage 1/3 · rampe 0/1 · citerne 1/1 · soute 0/1 · riviere 0/1 · vent 0/1|16,3 m|7 bascules|les trois gags → eolipyle + fusee + remorque @40,1 · citerne sèche → citerne @264,9|
+|qui coupe le feu et le reprend|calage 0/3 · rampe 1/1 · citerne 0/1 · soute 0/1 · riviere 0/1 · vent 0/1|24,9 m|496 bascules|les trois gags → eolipyle + fusee + remorque @40,1 · rampe refusée → cheval @65,2|
+|feu à fond|calage 0/3 · rampe 1/1 · citerne 1/1 · soute 0/1 · riviere 1/1 · vent 1/1|100,8 m|655 bascules|les trois gags → eolipyle + fusee + remorque @40,1 · rivière atteinte → pompe @75,7 · vallée ventée → eolienne + voile @94,3 · rampe refusée → cheval @111,0 · citerne sèche → citerne @156,7|
+|feu à fond et barre|calage 0/3 · rampe 1/1 · citerne 1/1 · soute 0/1 · riviere 1/1 · vent 1/1|100,8 m|727 bascules|les trois gags → eolipyle + fusee + remorque @40,1 · rivière atteinte → pompe @75,6 · vallée ventée → eolienne + voile @94,2 · rampe refusée → cheval @111,3 · citerne sèche → citerne @156,1|
 
 ## 4. Le bercement : le risque n°1 du billet
 
 Sur le plat, lancée, le robinet avare à `0,1` et plus personne dessus, deux cents
-secondes : la parole brute du modèle bascule **83 fois**, le garage compte
-**1 calage** et n'ouvre rien. Les trois mots les plus tenus pendant ce temps-là :
-« cale » 194 s · « roule » 6 s · « souffle » 0 s.
+secondes : la parole brute du modèle bascule **0 fois**, le garage compte
+**0 calage** et n'ouvre rien. Les trois mots les plus tenus pendant ce temps-là :
+« cale » 200 s.
 
-Sur la ligne du jeu à feu d'enfer, le bercement est bien plus fort : **658 bascules**
+Sur la ligne du jeu à feu d'enfer, le bercement est bien plus fort : **655 bascules**
 en deux cents secondes, 0 chute tenue — il en faut 3 pour ouvrir une pièce.
 C'est là qu'est le piège : un compteur qui lirait la parole du modèle ouvrirait le second cylindre en
 trente secondes de point mort.
 C'est la mesure qui prouve que le compteur compte des chutes tenues et non des bascules.
 Deux promesses la gardent, l'une à la règle nue, l'autre sur la ligne du jeu par le même
-conducteur que ce feuillet. Le seuil est à 3 : 1 en deux cents secondes, ça ne
+conducteur que ce feuillet. Le seuil est à 3 : 0 en deux cents secondes, ça ne
 passe pas — et c'est exactement ce qu'on veut.
 
 ## 5. Trois chutes, trois lancers, la même mémoire
@@ -110,8 +111,8 @@ secondes. Un feu mesuré (0,5), pas le feu d'enfer, pour la raison écrite à la
 |chute|relancée|calages comptés|ce que ça ouvre|à|
 |---|---|---|---|---|
 |1|oui|1|Éolipyle, Fusée, Remorque|47 s|
-|2|oui|2|rien|56 s|
-|3|oui|3|Second cylindre|62 s|
+|2|oui|2|rien|53 s|
+|3|oui|3|Second cylindre|58 s|
 |4|oui|4|rien|47 s|
 
 Les trois gags ouvrent à la première image consultée, ici pendant la première reprise : ils
@@ -155,10 +156,10 @@ elle ne repart plus, et la quatrième chute n'a plus rien à rencontrer.
 |feu|chutes enchaînées sans relancer|pression à la fin|
 |---|---|---|
 |1|1 sur 6|11 bars|
-|0.5|3 sur 6|10 bars|
-|0.3|2 sur 6|6 bars|
+|0.5|6 sur 6|7 bars|
+|0.3|4 sur 6|6 bars|
 
-Personne n'enchaîne six chutes sans relancer la machine : au mieux 3 sur six, et dès
+Personne n'enchaîne six chutes sans relancer la machine : au mieux 6 sur six, et dès
 1 sur six à feu d'enfer. Un enfant qui laisse le feu à fond perd donc la
 partie de calage tout de suite : il faut couper le feu, ou ne pas l'ouvrir à fond, ou
 relancer. À juger au regard — c'est une punition automatique qui ressemble à un mur, pas à
@@ -200,7 +201,7 @@ repartir. Ce n'est pas le seuil qui est dur, c'est la vapeur comprimée.
 
 ## 9. Ce que les promesses gardent
 
-10 promesses écrites à la fin de `tests/regles.test.js`, dans le bloc « Le garage
+28 promesses écrites à la fin de `tests/regles.test.js`, dans le bloc « Le garage
 s'agrandit par le problème ». `tests/modele.test.js` n'a pas bougé d'un caractère.
 
 - les trois gags sont sur l’établi à la première image, et Braise ne dit rien
@@ -213,4 +214,22 @@ s'agrandit par le problème ». `tests/modele.test.js` n'a pas bougé d'un carac
 - aucune pièce du garage ne demande autre chose que sa masse
 - la pièce neuve est dessinée dans la seconde qui suit son ouverture
 - le feuillet de relecture du billet dit ce que le code dit
+- la soute rend le kilo de son charbon, la citerne le litre de son eau
+- la projection emprunte l’unité au réservoir, elle ne l’écrit pas
+- la masse embarquée suit le charbon et l’eau que la machine porte
+- dans une rampe, le plein coûte des mètres au démarrage
+- sans le changement de marche, la machine refuse la marche arrière
+- avec le changement de marche, la bascule change le sens du mouvement
+- la projection montre et cache le levier selon la pièce
+- la partie se sauvegarde avec sa version, et charger rend une machine froide qui se souvient
+- charger refuse une version inconnue, une pièce inventée, une grandeur abîmée
+- la projection ne connaît qu\'une seule clé de navigateur pour la partie
+- avec soupape, la tôle ne travaille jamais, même à feu d’enfer
+- sans soupape la tôle travaille, et remonter la soupape l’arrête
+- la tôle qui travaille paie en charbon, et le feu pousse toujours
+- la scène de la tôle ne se paie ni en défaite, ni en pièce, ni en sauvegarde
+- à la rivière, la pompe remplit la citerne à l’arrêt
+- brancher la pompe ou la roue à eau n’ôte ni charbon ni eau
+- en circuit fermé, la pompe rend l’eau au bassin, jamais à la citerne
+- Braise nomme le circuit fermé une fois, et ne propose aucune réparation
 

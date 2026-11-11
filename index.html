@@ -95,6 +95,9 @@
            que personne n'ouvre le levier, et ce que ça coûte, c'est le modèle qui le
            compte. Le bouton ne se montre qu'avec la pièce. -->
       <button id="pompe" type="button" aria-pressed="false" hidden>La pompe</button>
+      <!-- Le circuit fermé (billet n°12) : la commande qui fait remonter l'eau du
+           bassin. Il ne se montre qu'avec la pompe, la seule pièce qui le commande. -->
+      <button id="circuit" type="button" aria-pressed="false" hidden>Circuit fermé</button>
       <!-- Le levier de changement de marche (billet n°11). Il ne se montre qu'avec
            la pièce : sans elle, la machine part dans le sens qu'on lui donne. -->
       <button id="marche-arriere" type="button" aria-pressed="false" hidden>Marche arrière</button>
@@ -982,6 +985,16 @@ const reglesDuJeu = (() => {
 
   function marcheArriereEstMontee(engin) {
     return !!engin.pieces.changement_de_marche;
+  }
+
+  // Le circuit fermé (billet #12) : la commande qui fait remonter l'eau du bassin
+  // par la pompe au lieu de la puiser à la rivière. C'est le piège à nommer — la
+  // même eau qui tourne, rien de neuf n'entre — et ce n'est pas une pièce, c'est un
+  // geste du chauffeur. Sans pompe montée, la commande ne s'ouvre pas.
+  function basculerLeCircuit(engin) {
+    if (!engin.pieces.pompe) return false;
+    engin.commandes.circuit = engin.commandes.circuit > 0 ? 0 : 1;
+    return true;
   }
 
   // Le régulateur dose la vapeur admise. Il ne décale pas l'excentrique : l'avance
@@ -1895,6 +1908,7 @@ const reglesDuJeu = (() => {
         dites: {},
         diteA: -Infinity,   // aucune phrase encore : la première n'attend rien
         geste: null,
+        memeEauDite: false, // le circuit fermé ne se nomme qu'une fois (billet #12)
       },
     };
   }
@@ -2030,6 +2044,10 @@ const reglesDuJeu = (() => {
     ouvre_soute: 'Le foyer a mangé toute la soute : le garage en a ouvert une seconde.',
     ouvre_riviere: 'La rivière est passée sous les roues : le garage a ouvert la pompe, qui puise où elle trempe.',
     ouvre_vent: 'Le vent de la vallée a poussé plus fort que la machine : le garage a ouvert l’éolienne et la voile.',
+    // Le montage qui triche (billet #12) : la roue à eau boit ce que la pompe
+    // remonte, et rien de neuf n'entre. Braise nomme le refus de la machine, pas
+    // une réparation : l'élève défait le montage lui-même.
+    meme_eau: 'C’est la même eau : elle tourne dans le circuit, elle ne se crée pas et ne remplit rien.',
   };
 
   // Le pas de la montre de Braise : le vingtième de seconde, celui que la projection
@@ -2199,10 +2217,15 @@ const reglesDuJeu = (() => {
     // sort qu'une fois dite — refroidie, elle reste et revient à la respiration
     // suivante, comme la situation nouvelle juste en dessous.
     const file = memo && memo.garage ? memo.garage.aDire : null;
+    // Le montage qui se nourrit lui-même (billet #12) : pompe et roue à eau
+    // branchées, circuit enclenché. La même eau tourne, rien de neuf n'entre —
+    // Braise le nomme une fois, et n'en propose aucune réparation.
+    const montageTricheur = engin.pieces.pompe && engin.pieces.roue_a_eau && engin.commandes.circuit > 0 && !b.memeEauDite;
     let clef = null;
     if (geste !== null) clef = geste;
     else if (file !== null) clef = file;
     else if (piece !== null) clef = piece;
+    else if (montageTricheur) clef = 'meme_eau';
     else if (hesitation && !b.tatonnee) clef = 'tatonne';
     else if (vue !== b.annoncee) clef = vue;
     if (clef === null) return null;
@@ -2214,6 +2237,7 @@ const reglesDuJeu = (() => {
     // se taire et être tue.
     if (ligne === '' && !b.muet) return null;
     if (piece !== null) b.absentes[piece] = true;
+    if (clef === 'meme_eau') b.memeEauDite = true;
     if (hesitation) b.tatonnee = true;
     b.annoncee = vue;
     return ligne === '' ? null : { clef, mot: ligne };
@@ -2281,6 +2305,7 @@ const reglesDuJeu = (() => {
         // poussent. Une promesse le vérifie : la projection ne lit que ce que l'état
         // du jeu rend.
         pompe: engin.commandes.pompe,
+        circuit: engin.commandes.circuit,
         fusee: engin.commandes.fusee,
         // Le mot vient de la commande réelle du modèle, pas de la position du
         // curseur : c'est le robinet qui est fermé, pas le doigt du joueur. Et si le
@@ -2304,6 +2329,10 @@ const reglesDuJeu = (() => {
       chaudiere: chaudiereVue(engin),
       comptes: comptesVus(engin),
       reservoirs: reservoirsVus(engin),
+      // Le bassin du circuit fermé (billet #12) : sa hauteur d'eau, la même pour
+      // la roue à eau qui la boit et la pompe qui la remonte. Le dessin la rend,
+      // il ne la compte pas.
+      bassin: { haut: engin.circuit.haut },
       // Ce que le bord de route dit du charbon et de l'eau. La projection écrit
       // ce mot, elle ne le devine pas : le soutage est une règle, pas un dessin.
       soutage: soutageVu(engin, monde),
@@ -2335,7 +2364,7 @@ const reglesDuJeu = (() => {
     GRAINE_DU_JEU, SEUIL_DE_RAMPE, nombreDeLaGraine, ligneDeLaGraine, mondeDeLaLigne, mondeDeLaGraine,
     mondeSousLesRoues, prochaineRampe,
     soutage, DEBIT_DE_SOUTAGE, UNITES_DE_RESERVOIR,
-    basculerLaMarche, marcheArriereEstMontee,
+    basculerLaMarche, marcheArriereEstMontee, basculerLeCircuit,
   };
   return reglesDuJeu;
 })();
@@ -2367,6 +2396,7 @@ const reglesDuJeu = (() => {
     regulateurDit: document.getElementById('regulateur-dit'),
     barre: document.getElementById('barre'),
     pompe: document.getElementById('pompe'),
+    circuit: document.getElementById('circuit'),
     marcheArriere: document.getElementById('marche-arriere'),
     paliers: Array.from(document.querySelectorAll('#vitesse-temps .palier')),
     distanceDits: document.getElementById('distance-dits'),
@@ -2895,6 +2925,9 @@ const reglesDuJeu = (() => {
 
     // La pompe : entraînée par la manivelle, elle trempe dans ce que le sol a d'eau.
     if (p.pompe) dessineLaPompe(etat);
+    // La roue à eau et son bassin (billet #12) : le bassin se vide quand la roue
+    // tourne, et la pompe y renvoie la même eau.
+    if (p.roue_a_eau) dessineLaRoueAEAU(etat);
 
     // Une roue qui patine marque le rail sans emporter la machine.
     if (etat.forme === 'triangle') {
@@ -2960,6 +2993,23 @@ const reglesDuJeu = (() => {
         disque(x + 0.3, y, 0.035, '#6d93a6');
       }
     }
+  }
+
+  // La roue à eau et son bassin (billet #12) : le niveau vient de l'état du jeu
+  // (`bassin.haut`), l'image ne le compte pas. La roue avale l'eau du bassin et la
+  // pompe la renvoie — la même eau, toujours. Le plafond de dessin (/ 6) est un
+  // choix d'échelle, pas une règle de physique.
+  function dessineLaRoueAEAU(etat) {
+    const x = -0.6;
+    const y = 0.2;
+    disque(x, y, 0.4, '#3f4753');
+    for (let k = 0; k < 6; k += 1) {
+      const a = etat.machine.angle + (k * Math.PI) / 3;
+      trait(x + 0.32 * Math.cos(a), y + 0.32 * Math.sin(a), x + 0.42 * Math.cos(a), y + 0.42 * Math.sin(a), CHARS.ferClair, 0.05);
+    }
+    const plein = Math.max(0, Math.min(1, (etat.bassin.haut || 0) / 6));
+    rect(x - 0.62, 0.02, 1.24, 0.2, CHARS.fer);
+    rect(x - 0.58, 0.04, 1.16, 0.16 * plein, '#6d93a6');
   }
 
   // Le cheval : devant, la trace au poitrail. Il tire le châssis et non les roues, et
@@ -3412,6 +3462,11 @@ const reglesDuJeu = (() => {
     // Le levier de la pompe n'existe à l'écran que pour une machine qui porte la
     // pièce : avant le garage, rien à embrayer et rien à apprendre.
     vues.pompe.hidden = !(etat.pieces.pompe > 0);
+    // Le circuit fermé suit la pompe : sans elle, rien à renvoyer au bassin.
+    vues.circuit.hidden = !(etat.pieces.pompe > 0);
+    if (!vues.circuit.hidden) {
+      vues.circuit.setAttribute('aria-pressed', String(etat.commandes.circuit > 0));
+    }
     // Le levier de changement de marche (billet #11) : la pièce décide de sa
     // présence, la marche vue décide de son état pressé/enfoncé.
     vues.marcheArriere.hidden = !(etat.pieces.changement_de_marche > 0);
@@ -3467,6 +3522,13 @@ const reglesDuJeu = (() => {
     engin.commandes.pompe = R.commandeDuCurseur(embrayee ? 0 : 100);
     vues.pompe.setAttribute('aria-pressed', String(!embrayee));
   }
+  // Le circuit fermé (billet #12) : ce n'est pas une pièce, c'est le geste qui
+  // renvoie l'eau du bassin à la pompe. Il ne se montre qu'avec la pompe, et la
+  // bascule passe par le modèle — l'écran ouvre, il ne pompe pas.
+  function embrayerLeCircuit() {
+    R.basculerLeCircuit(engin);
+    vues.circuit.setAttribute('aria-pressed', String(engin.commandes.circuit > 0));
+  }
   // Le levier de changement de marche au tableau (billet #11). Sans la pièce, il
   // n'est pas à l'écran ; avec elle, la bascule change le sens du couple moteur.
   function basculerLaMarcheArriere() {
@@ -3500,6 +3562,7 @@ const reglesDuJeu = (() => {
   vues.regulateur.addEventListener('input', () => reglerLeRegulateur(Number(vues.regulateur.value)));
   vues.barre.addEventListener('click', coupDeBarre);
   vues.pompe.addEventListener('click', embrayerLaPompe);
+  vues.circuit.addEventListener('click', embrayerLeCircuit);
   vues.marcheArriere.addEventListener('click', basculerLaMarcheArriere);
   vues.garage.addEventListener('click', ouvrirLeGarage);
   vues.braiseBouton.addEventListener('click', couperLaParole);
